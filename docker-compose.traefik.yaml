@@ -1,0 +1,50 @@
+version: '3.9'
+
+services:
+  traefik:
+    image: traefik:v2.11
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--api.dashboard=true"
+      - "--api.insecure=true" # ⚠ accès libre, à retirer en prod
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.dashboard.address=:9001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`local-traefik.regazbordeaux.com`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - bme_network
+
+  # Portainer UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - bme_network
+  adminer:
+    image: adminer:latest
+    container_name: adminer
+    networks:
+      - bme_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`local-adminer.regazbordeaux.com`)"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+
+volumes:
+  portainer_data:
+
+networks:
+  bme_network:
+    external: true
