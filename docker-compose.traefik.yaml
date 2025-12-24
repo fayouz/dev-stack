@@ -1,6 +1,18 @@
-version: '3.9'
-
 services:
+  glance:
+    container_name: glance
+    image: glanceapp/glance
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - bme_network
+      - bme_network_aux
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glance.rule=Host(`local-glance.regazbordeaux.com`)"
+      - "traefik.http.services.glance.loadbalancer.server.port=8080"
   traefik:
     image: traefik:v2.11
     command:
@@ -14,12 +26,38 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.traefik.rule=Host(`local-traefik.regazbordeaux.com`)"
       - "traefik.http.routers.traefik.service=api@internal"
+      - "glance.name=Traefik"
+      - "glance.icon=si:traefik"
+      - "glance.url=https://local-traefik.regazbordeaux.com"
+      - "glance.description=Reverse Proxy"
+      - "glance.id=immich"
     ports:
       - "80:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - bme_network
+      - bme_network_aux
+
+  organizr:
+    image: organizr/organizr
+    container_name: organizr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    volumes:
+      - organizer_data:/config
+    restart: unless-stopped
+    depends_on:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.organizr.rule=Host(`local-organizr.regazbordeaux.com`)"
+      - "traefik.http.services.organizr.loadbalancer.server.port=80"
+    networks:
+      - bme_network
+      - bme_network_aux
 
   # Portainer UI
   portainer:
@@ -27,24 +65,66 @@ services:
     container_name: portainer
     ports:
       - "9000:9000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`local-portainer.regazbordeaux.com`)"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     networks:
       - bme_network
+      - bme_network_aux
   adminer:
     image: adminer:latest
     container_name: adminer
     networks:
       - bme_network
+      - bme_network_aux
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.adminer.rule=Host(`local-adminer.regazbordeaux.com`)"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+  docus:
+    build:
+      context: ./docus
+      dockerfile: Dockerfile
+      args:
+        - HTTP_PROXY=
+        - HTTPS_PROXY=
+        - NO_PROXY=localhost,127.0.0.1,::1
+    volumes:
+      - ./docus/app:/home/nodeuser/my-app
+      - ./docus/scripts/start.sh:/usr/local/bin/start.sh:rw
+      - /home/pinf14/projects/RegazLink/docs:/home/nodeuser/my-app/content/regazlink:rw
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.docus.rule=Host(`local-docus.regazbordeaux.com`)"
+      - "traefik.http.services.docus.loadbalancer.server.port=3000"
+      # Support WebSocket
+
+    stdin_open: true
+    tty: true
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - NODE_ENV=development
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - NO_PROXY=localhost,127.0.0.1,::1
+      - MANUAL_INSTALL=1
+
+    restart: unless-stopped
+    networks:
+      - bme_network
+      - bme_network_aux
 
 volumes:
   portainer_data:
+  organizer_data:
 
 networks:
   bme_network:
+    external: true
+  bme_network_aux:
     external: true
