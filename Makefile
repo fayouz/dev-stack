@@ -18,7 +18,7 @@ RED = \033[0;31m
 BLUE = \033[0;34m
 NC = \033[0m # No Color
 
-.PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle
+.PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps
 
 # Commande par défaut
 help: ## Affiche cette aide
@@ -32,10 +32,10 @@ up: ## Démarre les services Traefik
 	docker compose -f $(COMPOSE_FILE)  -p $(PROJECT_NAME) up -d
 	@echo "$(GREEN)Services démarrés avec succès!$(NC)"
 	@echo "$(YELLOW)Accès:$(NC)"
-	@echo "  - Traefik Dashboard: http://local-traefik.regazbordeaux.com"
-	@echo "  - Portainer: http://local-portainer.regazbordeaux.com"
-	@echo "  - Adminer: http://local-adminer.regazbordeaux.com"
-	@echo "  - Docus: http://local-docus.regazbordeaux.com"
+	@echo "  - Traefik Dashboard: http://traefik.local"
+	@echo "  - Portainer: http://portainer.local"
+	@echo "  - Adminer: http://adminer.local"
+	@echo "  - Docus: http://docus.local"
 
 up-all: network ## Démarre TOUS les services (Traefik + auxiliaires + Plumo)
 	@echo "$(GREEN)Démarrage de tous les services...$(NC)"
@@ -106,6 +106,15 @@ ps-all: ## Affiche le statut de TOUS les conteneurs
 	@echo "$(GREEN)Statut de tous les conteneurs:$(NC)"
 	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Networks}}" | head -1
 	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Networks}}" | grep -v NAMES | sort
+
+sync-hosts: ## Synchronise les hôtes Traefik avec le fichier hosts de Windows (Bash)
+	@echo "$(YELLOW)Synchronisation des hôtes (WSL)...$(NC)"
+	@chmod +x scripts/sync_hosts.sh
+	@./scripts/sync_hosts.sh
+
+sync-hosts-ps: ## Synchronise les hôtes Traefik avec le fichier hosts de Windows (PowerShell)
+	@echo "$(YELLOW)Synchronisation des hôtes (PowerShell)...$(NC)"
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/sync_hosts.ps1
 
 build: ## Reconstruit les images (si nécessaire)
 	@echo "$(YELLOW)Reconstruction des images...$(NC)"
