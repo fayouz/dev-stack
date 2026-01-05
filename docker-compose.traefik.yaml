@@ -1,18 +1,4 @@
 services:
-  glance:
-    container_name: glance
-    image: glanceapp/glance
-    restart: unless-stopped
-    volumes:
-      - ./config:/app/config
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - bme_network
-      - bme_network_aux
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.glance.rule=Host(`local-glance.regazbordeaux.com`)"
-      - "traefik.http.services.glance.loadbalancer.server.port=8080"
   traefik:
     image: traefik:v2.11
     command:
@@ -24,13 +10,13 @@ services:
       - "--entrypoints.dashboard.address=:9001"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`local-traefik.regazbordeaux.com`)"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.local`)"
       - "traefik.http.routers.traefik.service=api@internal"
       - "glance.name=Traefik"
-      - "glance.icon=si:traefik"
-      - "glance.url=https://local-traefik.regazbordeaux.com"
+      - "glance.icon=si:traefikproxy"
+      - "glance.url=http://traefik.local"
       - "glance.description=Reverse Proxy"
-      - "glance.id=immich"
+      - "glance.id=traefik"
     ports:
       - "80:80"
     volumes:
@@ -38,27 +24,6 @@ services:
     networks:
       - bme_network
       - bme_network_aux
-
-  organizr:
-    image: organizr/organizr
-    container_name: organizr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Paris
-    volumes:
-      - organizer_data:/config
-    restart: unless-stopped
-    depends_on:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.organizr.rule=Host(`local-organizr.regazbordeaux.com`)"
-      - "traefik.http.services.organizr.loadbalancer.server.port=80"
-    networks:
-      - bme_network
-      - bme_network_aux
-
   # Portainer UI
   portainer:
     image: portainer/portainer-ce:latest
@@ -67,8 +32,13 @@ services:
       - "9000:9000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`local-portainer.regazbordeaux.com`)"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.local`)"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "glance.name=Portainer"
+      - "glance.icon=si:portainer"
+      - "glance.url=http://portainer.local"
+      - "glance.description=Container Management"
+      - "glance.id=portainer"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -83,7 +53,7 @@ services:
       - bme_network_aux
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.adminer.rule=Host(`local-adminer.regazbordeaux.com`)"
+      - "traefik.http.routers.adminer.rule=Host(`adminer.local`)"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
   docus:
     build:
@@ -100,7 +70,7 @@ services:
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.docus.rule=Host(`local-docus.regazbordeaux.com`)"
+      - "traefik.http.routers.docus.rule=Host(`docus.local`)"
       - "traefik.http.services.docus.loadbalancer.server.port=3000"
       # Support WebSocket
 
@@ -118,10 +88,72 @@ services:
     networks:
       - bme_network
       - bme_network_aux
-
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-password}
+      APP_USER: ${ORACLE_USER:-RGZ}
+      APP_USER_PASSWORD: ${ORACLE_USER_PASSWORD:-password}
+      NLS_LANG: FRENCH_FRANCE.AL32UTF8
+    ports:
+      - "1521:1521"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.oracle.rule=Host(`oracle.local`)"
+      - "traefik.http.services.oracle.loadbalancer.server.port=1521"
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    networks:
+      - bme_network
+      - bme_network_aux
+  mailer:
+    container_name: mailer
+    image: sj26/mailcatcher:v0.10.0
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailer.rule=Host(`mailer.local`)"
+      - "traefik.http.services.mailer.loadbalancer.server.port=1080"
+    networks:
+      - bme_network
+      - bme_network_aux
+  glance:
+    container_name: glance
+    image: glanceapp/glance
+    restart: unless-stopped
+    volumes:
+      - ./mnt/glance/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - bme_network
+      - bme_network_aux
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glance.rule=Host(`glance.local`)"
+      - "traefik.http.services.glance.loadbalancer.server.port=8080"
+  organizr:
+    image: organizr/organizr
+    container_name: organizr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    volumes:
+      - organizer_data:/config
+    restart: unless-stopped
+    depends_on:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.organizr.rule=Host(`organizr.local`)"
+      - "traefik.http.services.organizr.loadbalancer.server.port=80"
+    networks:
+      - bme_network
+      - bme_network_aux
 volumes:
   portainer_data:
   organizer_data:
+  oracle_data:
 
 networks:
   bme_network:
