@@ -10,11 +10,11 @@ services:
       - "--entrypoints.dashboard.address=:9001"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.local`)"
+      - "traefik.http.routers.traefik.rule=Host(`${SUBDOMAIN}-traefik.${DOMAIN}`)"
       - "traefik.http.routers.traefik.service=api@internal"
       - "glance.name=Traefik"
       - "glance.icon=si:traefikproxy"
-      - "glance.url=http://traefik.local"
+      - "glance.url=http://${SUBDOMAIN}-traefik.${DOMAIN}"
       - "glance.description=Reverse Proxy"
       - "glance.id=traefik"
     ports:
@@ -32,11 +32,11 @@ services:
       - "9000:9000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`portainer.local`)"
+      - "traefik.http.routers.portainer.rule=Host(`${SUBDOMAIN}-portainer.${DOMAIN}`)"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
       - "glance.name=Portainer"
       - "glance.icon=si:portainer"
-      - "glance.url=http://portainer.local"
+      - "glance.url=http://${SUBDOMAIN}-portainer.${DOMAIN}"
       - "glance.description=Container Management"
       - "glance.id=portainer"
     volumes:
@@ -53,24 +53,24 @@ services:
       - bme_network_aux
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.adminer.rule=Host(`adminer.local`)"
+      - "traefik.http.routers.adminer.rule=Host(`${SUBDOMAIN}-adminer.${DOMAIN}`)"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
   docus:
     build:
-      context: ./docus
+      context: ./mnt/docus
       dockerfile: Dockerfile
       args:
         - HTTP_PROXY=
         - HTTPS_PROXY=
         - NO_PROXY=localhost,127.0.0.1,::1
     volumes:
-      - ./docus/app:/home/nodeuser/my-app
-      - ./docus/scripts/start.sh:/usr/local/bin/start.sh:rw
+      - ./mnt/docus/app:/home/nodeuser/my-app
+      - ./mnt/docus/scripts/start.sh:/usr/local/bin/start.sh:rw
       - /home/pinf14/projects/RegazLink/docs:/home/nodeuser/my-app/content/regazlink:rw
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.docus.rule=Host(`docus.local`)"
+      - "traefik.http.routers.docus.rule=Host(`${SUBDOMAIN}-docus.${DOMAIN}`)"
       - "traefik.http.services.docus.loadbalancer.server.port=3000"
       # Support WebSocket
 
@@ -99,7 +99,7 @@ services:
       - "1521:1521"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.oracle.rule=Host(`oracle.local`)"
+      - "traefik.http.routers.oracle.rule=Host(`${SUBDOMAIN}-oracle.${DOMAIN}`)"
       - "traefik.http.services.oracle.loadbalancer.server.port=1521"
     volumes:
       - oracle_data:/opt/oracle/oradata
@@ -112,7 +112,7 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.mailer.rule=Host(`mailer.local`)"
+      - "traefik.http.routers.mailer.rule=Host(`${SUBDOMAIN}-mailer.${DOMAIN}`)"
       - "traefik.http.services.mailer.loadbalancer.server.port=1080"
     networks:
       - bme_network
@@ -129,7 +129,7 @@ services:
       - bme_network_aux
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.glance.rule=Host(`glance.local`)"
+      - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
       - "traefik.http.services.glance.loadbalancer.server.port=8080"
   organizr:
     image: organizr/organizr
@@ -145,7 +145,7 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.organizr.rule=Host(`organizr.local`)"
+      - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
       - "traefik.http.services.organizr.loadbalancer.server.port=80"
     networks:
       - bme_network
