@@ -1,0 +1,44 @@
+services:
+  docus:
+    build:
+      context: ./mnt/docus
+      dockerfile: Dockerfile
+      args:
+        - HTTP_PROXY=
+        - HTTPS_PROXY=
+        - NO_PROXY=localhost,127.0.0.1,::1
+    volumes:
+      - ./mnt/docus/app:/home/nodeuser/my-app
+      - ./mnt/docus/scripts/start.sh:/usr/local/bin/start.sh:rw
+      - /home/pinf14/projects/RegazLink/docs:/home/nodeuser/my-app/content/regazlink:rw
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.docus.rule=Host(`${SUBDOMAIN}-docus.${DOMAIN}`)"
+      - "traefik.http.services.docus.loadbalancer.server.port=3000"
+      # Support WebSocket
+
+    stdin_open: true
+    tty: true
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - NODE_ENV=development
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - NO_PROXY=localhost,127.0.0.1,::1
+      - MANUAL_INSTALL=1
+
+    restart: unless-stopped
+    networks:
+      - bme_network
+      - bme_network_aux
+volumes:
+  portainer_data:
+  organizer_data:
+  oracle_data:
+
+networks:
+  bme_network:
+    external: true
+  bme_network_aux:
+    external: true

@@ -85,6 +85,15 @@ logs-portainer: ## Affiche les logs de Portainer uniquement
 logs-adminer: ## Affiche les logs d'Adminer uniquement
 	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f adminer
 
+logs-dozzle: ## Affiche les logs de Dozzle uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f dozzle
+
+logs-mailer: ## Affiche les logs de Mailer (Mailpit) uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f mailer
+
+logs-mariadb: ## Affiche les logs de MariaDB uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f mariadb
+
 logs-plumo: ## Affiche les logs de Plumo (backend + frontend)
 	@if [ -f $(COMPOSE_FILE_PLUMO) ]; then \
 		docker compose -f $(COMPOSE_FILE_PLUMO) logs -f; \
@@ -248,4 +257,4 @@ update: pull restart ## Met à jour et redémarre les services
 
 health: ## Vérifie la santé des services
 	@echo "$(GREEN)Vérification de la santé des services:$(NC)"
-	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(traefik|portainer|adminer|plumo)"
+	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(traefik|portainer|adminer|plumo|dozzle|mailer|mariadb)"

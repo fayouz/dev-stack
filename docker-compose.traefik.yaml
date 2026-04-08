@@ -1,26 +1,31 @@
 services:
   traefik:
-    image: traefik:v2.11
+    image: traefik:latest
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--api.dashboard=true"
       - "--api.insecure=true" # ⚠ accès libre, à retirer en prod
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
       - "--entrypoints.dashboard.address=:9001"
+
+    environment:
+      - DOCKER_API_VERSION=1.40
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`${SUBDOMAIN}-traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.local`)"
       - "traefik.http.routers.traefik.service=api@internal"
       - "glance.name=Traefik"
       - "glance.icon=si:traefikproxy"
-      - "glance.url=http://${SUBDOMAIN}-traefik.${DOMAIN}"
+      - "glance.url=http(`traefik.local`)"
       - "glance.description=Reverse Proxy"
       - "glance.id=traefik"
     ports:
       - "80:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
     networks:
       - bme_network
       - bme_network_aux
@@ -41,7 +46,7 @@ services:
       - "glance.id=portainer"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
+      - ./mnt/portainer/data:/data
     networks:
       - bme_network
       - bme_network_aux
@@ -55,39 +60,6 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.adminer.rule=Host(`${SUBDOMAIN}-adminer.${DOMAIN}`)"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
-  docus:
-    build:
-      context: ./mnt/docus
-      dockerfile: Dockerfile
-      args:
-        - HTTP_PROXY=
-        - HTTPS_PROXY=
-        - NO_PROXY=localhost,127.0.0.1,::1
-    volumes:
-      - ./mnt/docus/app:/home/nodeuser/my-app
-      - ./mnt/docus/scripts/start.sh:/usr/local/bin/start.sh:rw
-      - /home/pinf14/projects/RegazLink/docs:/home/nodeuser/my-app/content/regazlink:rw
-
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.docus.rule=Host(`${SUBDOMAIN}-docus.${DOMAIN}`)"
-      - "traefik.http.services.docus.loadbalancer.server.port=3000"
-      # Support WebSocket
-
-    stdin_open: true
-    tty: true
-    user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - NODE_ENV=development
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - NO_PROXY=localhost,127.0.0.1,::1
-      - MANUAL_INSTALL=1
-
-    restart: unless-stopped
-    networks:
-      - bme_network
-      - bme_network_aux
   oracle:
     image: gvenzl/oracle-xe:21-slim
     environment:
@@ -108,19 +80,31 @@ services:
       - bme_network_aux
   mailer:
     container_name: mailer
-    image: sj26/mailcatcher:v0.10.0
+    image: axllent/mailpit:latest
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mailer.rule=Host(`${SUBDOMAIN}-mailer.${DOMAIN}`)"
-      - "traefik.http.services.mailer.loadbalancer.server.port=1080"
+      - "traefik.http.services.mailer.loadbalancer.server.port=8025"
+      - "glance.name=Mailpit"
+      - "glance.icon=si:mailtrap"
+      - "glance.url=http://${SUBDOMAIN}-mailer.${DOMAIN}"
+      - "glance.description=Mail Catcher & Testing"
+      - "glance.id=mailpit"
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # HTTP (UI)
     networks:
-      - bme_network
-      - bme_network_aux
+      bme_network:
+        aliases:
+            - ${SUBDOMAIN}-mailer.${DOMAIN}
+      bme_network_aux:
   glance:
     container_name: glance
     image: glanceapp/glance
     restart: unless-stopped
+    environment:
+      - DOCKER_API_VERSION=1.40
     volumes:
       - ./mnt/glance/config:/app/config
       - /var/run/docker.sock:/var/run/docker.sock
@@ -139,10 +123,11 @@ services:
       - PGID=1000
       - TZ=Europe/Paris
     volumes:
-      - organizer_data:/config
+      - ./mnt/organizr/config:/config
     restart: unless-stopped
     depends_on:
       - traefik
+      - mariadb
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
@@ -150,10 +135,53 @@ services:
     networks:
       - bme_network
       - bme_network_aux
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-db_master}
+      MARIADB_USER: ${MARIADB_USER:-admin}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-password}
+    volumes:
+      - ./mnt/mariadb/data:/var/lib/mysql
+      - ./mnt/adminer/config:/etc/mysql/conf.d
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mariadb.rule=Host(`${SUBDOMAIN}-mariadb.${DOMAIN}`)"
+      - "traefik.http.services.mariadb.loadbalancer.server.port=3306"
+      - "glance.name=MariaDB"
+      - "glance.icon=si:mariadb"
+      - "glance.url=http://${SUBDOMAIN}-mariadb.${DOMAIN}"
+      - "glance.description=SQL Database (MariaDB)"
+      - "glance.id=mariadb"
+    networks:
+      - bme_network
+      - bme_network_aux
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dozzle.rule=Host(`${SUBDOMAIN}-dozzle.${DOMAIN}`)"
+      - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+      - "glance.name=Dozzle"
+      - "glance.icon=si:docker"
+      - "glance.url=http://${SUBDOMAIN}-dozzle.${DOMAIN}"
+      - "glance.description=Real-time Log Viewer"
+      - "glance.id=dozzle"
+    networks:
+      - bme_network
+      - bme_network_aux
+    restart: unless-stopped
 volumes:
   portainer_data:
   organizer_data:
   oracle_data:
+  mariadb_data:
 
 networks:
   bme_network:

@@ -66,12 +66,24 @@ if echo -e "$FINAL_CONTENT" | sudo tee "$HOSTS_FILE" > /dev/null; then
 else
     echo "L'écriture directe a échoué. Tentative via PowerShell (élévation requise)..."
     WIN_HOSTS_FILE="C:\\Windows\\System32\\drivers\\etc\\hosts"
-    # On utilise un fichier temporaire côté Windows pour simplifier l'appel
     TEMP_FILE="C:\\Windows\\Temp\\hosts_traefik_temp"
-    echo -e "$FINAL_CONTENT" > /tmp/hosts_new
+    
+    # Création du fichier temporaire sur Windows
+    printf "$FINAL_CONTENT" > /tmp/hosts_new
     cp /tmp/hosts_new /mnt/c/Windows/Temp/hosts_traefik_temp 2>/dev/null
     
-    powershell.exe -Command "Start-Process powershell -ArgumentList '-Command \"Move-Item -Force $TEMP_FILE $WIN_HOSTS_FILE\"' -Verb RunAs" -Wait
+    # Recherche de PowerShell si non présent dans le PATH
+    POWERSHELL="powershell.exe"
+    if ! command -v $POWERSHELL &> /dev/null; then
+        POWERSHELL="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    fi
+    
+    if [ ! -f "$POWERSHELL" ] && ! command -v $POWERSHELL &> /dev/null; then
+        echo "[ERREUR] powershell.exe est introuvable."
+        exit 1
+    fi
+    
+    "$POWERSHELL" -Command "Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command \"Move-Item -Force $TEMP_FILE $WIN_HOSTS_FILE\"' -Verb RunAs -Wait"
     if [ $? -eq 0 ]; then
         echo "[OK] Mise à jour via PowerShell réussie."
     else
