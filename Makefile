@@ -18,7 +18,7 @@ RED = \033[0;31m
 BLUE = \033[0;34m
 NC = \033[0m # No Color
 
-.PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts
+.PHONY: help up up-demo up-local down restart logs status ps build pull clean prune network network-demo network-local migrate-network test-oracle sync-hosts sync-hosts-ps hosts backup-now
 
 # Commande par défaut
 help: ## Affiche cette aide
@@ -29,9 +29,16 @@ help: ## Affiche cette aide
 
 up: ## Démarre les services Traefik
 	@echo "$(GREEN)Démarrage des services Traefik...$(NC)"
-	docker compose -f $(COMPOSE_FILE)  -p $(PROJECT_NAME) up -d
+	docker compose --profile bme -f $(COMPOSE_FILE)  -p $(PROJECT_NAME) up -d
 	@echo "$(GREEN)Services démarrés avec succès!$(NC)"
 	@$(MAKE) hosts
+
+up-demo: network-demo ## Démarre la stack avec le profil Codespace demo
+	@echo "$(GREEN)Démarrage du profil demo...$(NC)"
+	docker compose --profile local --env-file demo/codespace/.env -f $(COMPOSE_FILE) -f docker-compose.local.yaml -p $(PROJECT_NAME) up -d
+
+up-local: up-demo ## Alias pour démarrer le profil Compose local
+
 
 up-all: network ## Démarre TOUS les services (Traefik + auxiliaires + Plumo)
 	@echo "$(GREEN)Démarrage de tous les services...$(NC)"
@@ -93,6 +100,30 @@ logs-mailer: ## Affiche les logs de Mailer (Mailpit) uniquement
 
 logs-mariadb: ## Affiche les logs de MariaDB uniquement
 	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f mariadb
+
+logs-socket-proxy: ## Affiche les logs du proxy Docker uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f docker-socket-proxy
+
+logs-watchtower: ## Affiche les logs de Watchtower uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f watchtower
+
+logs-cadvisor: ## Affiche les logs de cAdvisor uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f cadvisor
+
+logs-node-exporter: ## Affiche les logs de node-exporter uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f node-exporter
+
+logs-prometheus: ## Affiche les logs de Prometheus uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f prometheus
+
+logs-grafana: ## Affiche les logs de Grafana uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f grafana
+
+logs-restic: ## Affiche les logs de Restic uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f restic
+
+backup-now: ## Lance une sauvegarde Restic immédiate
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) run --rm -e BACKUP_ONCE=1 restic
 
 logs-plumo: ## Affiche les logs de Plumo (backend + frontend)
 	@if [ -f $(COMPOSE_FILE_PLUMO) ]; then \
@@ -169,6 +200,21 @@ network: ## Crée les réseaux bme_network s'ils n'existent pas
 	else \
 		echo "$(GREEN)Le réseau bme_network_aux existe déjà.$(NC)"; \
 	fi
+
+network-demo: ## Crée les réseaux externes avec le profil Docker demo
+	@echo "$(YELLOW)Création des réseaux du profil demo...$(NC)"
+	@if ! docker network inspect bme_network >/dev/null 2>&1; then \
+		docker network create --subnet=$(NETWORK_SUBNET) --gateway=$(NETWORK_GATEWAY) bme_network; \
+	else \
+		echo "$(GREEN)Le réseau bme_network existe déjà.$(NC)"; \
+	fi
+	@if ! docker network inspect bme_network_aux >/dev/null 2>&1; then \
+		docker network create --subnet=$(NETWORK_SUBNET_AUX) --gateway=$(NETWORK_GATEWAY_AUX) bme_network_aux; \
+	else \
+		echo "$(GREEN)Le réseau bme_network_aux existe déjà.$(NC)"; \
+	fi
+
+network-local: network-demo ## Alias pour les réseaux du profil Compose local
 
 network-info: ## Affiche les informations des réseaux Docker
 	@echo "$(BLUE)📊 Informations des réseaux Docker:$(NC)"
