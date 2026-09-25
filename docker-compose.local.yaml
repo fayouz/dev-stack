@@ -1,0 +1,26 @@
+services:
+  traefik:
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.exposedbydefault=false"
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    ports:
+      - "3000:3000"
+    labels:
+      - "traefik.http.services.grafana.loadbalancer.server.url=http://host.docker.internal:3000"
+
+  glance:
+    ports:
+      - "8080:8080"
+    labels:
+      - "traefik.http.services.glance.loadbalancer.server.url=http://host.docker.internal:8080"

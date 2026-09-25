@@ -1,21 +1,48 @@
 services:
+  docker-socket-proxy:
+    profiles: ["bme", "local"]
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      INFO: 1
+      NETWORKS: 1
+      POST: 1
+      SERVICES: 1
+      TASKS: 1
+      DISABLE_IPV6: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - bme_network
+
   traefik:
+    profiles: ["bme", "local"]
     image: traefik:latest
+    restart: unless-stopped
     command:
       - "--providers.docker=true"
+      - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
       - "--providers.docker.exposedbydefault=false"
       - "--api.dashboard=true"
-      - "--api.insecure=true" # ⚠ accès libre, à retirer en prod
+      - "--api.insecure=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.dashboard.address=:9001"
 
     environment:
       - DOCKER_API_VERSION=1.40
+    depends_on:
+      - docker-socket-proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.local`)"
+      - "traefik.http.routers.traefik.rule=Host(`local-traefik.${DOMAIN}`) || HostRegexp(`^[a-z0-9-]+-80[.]app[.]github[.]dev$`)"
+      - "traefik.http.routers.traefik.entrypoints=web"
       - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=dashboard-auth"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_USER}:${TRAEFIK_DASHBOARD_PASSWORD_HASH}"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "glance.name=Traefik"
       - "glance.icon=si:traefikproxy"
       - "glance.url=http(`traefik.local`)"
@@ -24,15 +51,19 @@ services:
     ports:
       - "80:80"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./letsencrypt:/letsencrypt
     networks:
       - bme_network
       - bme_network_aux
   # Portainer UI
   portainer:
+    profiles: ["bme", "local"]
     image: portainer/portainer-ce:latest
     container_name: portainer
+    restart: unless-stopped
+    command: --host tcp://docker-socket-proxy:2375
+    depends_on:
+      - docker-socket-proxy
     ports:
       - "9000:9000"
     labels:
@@ -44,15 +75,17 @@ services:
       - "glance.url=http://${SUBDOMAIN}-portainer.${DOMAIN}"
       - "glance.description=Container Management"
       - "glance.id=portainer"
+      - "com.centurylinklabs.watchtower.enable=true"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./mnt/portainer/data:/data
     networks:
       - bme_network
       - bme_network_aux
   adminer:
+    profiles: ["bme", "local"]
     image: adminer:latest
     container_name: adminer
+    restart: unless-stopped
     networks:
       - bme_network
       - bme_network_aux
@@ -60,7 +93,9 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.adminer.rule=Host(`${SUBDOMAIN}-adminer.${DOMAIN}`)"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+      - "com.centurylinklabs.watchtower.enable=true"
   oracle:
+    profiles: ["bme", "local"]
     image: gvenzl/oracle-xe:21-slim
     environment:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-password}
@@ -79,6 +114,7 @@ services:
       - bme_network
       - bme_network_aux
   mailer:
+    profiles: ["bme", "local"]
     container_name: mailer
     image: axllent/mailpit:latest
     restart: unless-stopped
@@ -91,6 +127,7 @@ services:
       - "glance.url=http://${SUBDOMAIN}-mailer.${DOMAIN}"
       - "glance.description=Mail Catcher & Testing"
       - "glance.id=mailpit"
+      - "com.centurylinklabs.watchtower.enable=true"
     ports:
       - "1025:1025" # SMTP
       - "8025:8025" # HTTP (UI)
@@ -100,22 +137,26 @@ services:
             - ${SUBDOMAIN}-mailer.${DOMAIN}
       bme_network_aux:
   glance:
+    profiles: ["bme", "local"]
     container_name: glance
     image: glanceapp/glance
     restart: unless-stopped
     environment:
       - DOCKER_API_VERSION=1.40
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+    depends_on:
+      - docker-socket-proxy
     volumes:
       - ./mnt/glance/config:/app/config
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - bme_network
       - bme_network_aux
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
-      - "traefik.http.services.glance.loadbalancer.server.port=8080"
+      - "com.centurylinklabs.watchtower.enable=true"
   organizr:
+    profiles: ["bme", "local"]
     image: organizr/organizr
     container_name: organizr
     environment:
@@ -132,10 +173,12 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
       - "traefik.http.services.organizr.loadbalancer.server.port=80"
+      - "com.centurylinklabs.watchtower.enable=true"
     networks:
       - bme_network
       - bme_network_aux
   mariadb:
+    profiles: ["bme", "local"]
     image: mariadb:latest
     container_name: mariadb
     restart: unless-stopped
@@ -159,11 +202,123 @@ services:
     networks:
       - bme_network
       - bme_network_aux
+
+  watchtower:
+    profiles: ["bme", "local"]
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      WATCHTOWER_SCHEDULE: "${WATCHTOWER_SCHEDULE:-0 0 4 * * *}"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+    depends_on:
+      - docker-socket-proxy
+    networks:
+      - bme_network
+
+  cadvisor:
+    profiles: ["bme", "local"]
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks:
+      - bme_network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  node-exporter:
+    profiles: ["bme", "local"]
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - "/:/host:ro"
+    networks:
+      - bme_network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  prometheus:
+    profiles: ["bme", "local"]
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./mnt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    networks:
+      - bme_network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  grafana:
+    profiles: ["bme", "local"]
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./mnt/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - bme_network
+      - bme_network_aux
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`${SUBDOMAIN}-grafana.${DOMAIN}`)"
+      - "glance.name=Grafana"
+      - "glance.icon=si:grafana"
+      - "glance.url=http://${SUBDOMAIN}-grafana.${DOMAIN}"
+      - "glance.description=Metrics Dashboard"
+      - "glance.id=grafana"
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  restic:
+    profiles: ["bme", "local"]
+    image: restic/restic:latest
+    container_name: restic
+    restart: unless-stopped
+    environment:
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/repository}
+      RESTIC_INTERVAL: ${RESTIC_INTERVAL:-86400}
+    volumes:
+      - ./mnt/mariadb/data:/sources/mariadb:ro
+      - oracle_data:/sources/oracle:ro
+      - ./mnt/portainer/data:/sources/portainer:ro
+      - ./mnt/restic/repo:/repository
+      - ./mnt/restic/backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
+    networks:
+      - bme_network
+
   dozzle:
+    profiles: ["bme", "local"]
     image: amir20/dozzle:latest
     container_name: dozzle
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    depends_on:
+      - docker-socket-proxy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dozzle.rule=Host(`${SUBDOMAIN}-dozzle.${DOMAIN}`)"
@@ -173,15 +328,17 @@ services:
       - "glance.url=http://${SUBDOMAIN}-dozzle.${DOMAIN}"
       - "glance.description=Real-time Log Viewer"
       - "glance.id=dozzle"
+      - "com.centurylinklabs.watchtower.enable=true"
     networks:
       - bme_network
       - bme_network_aux
-    restart: unless-stopped
 volumes:
   portainer_data:
   organizer_data:
   oracle_data:
   mariadb_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   bme_network:
