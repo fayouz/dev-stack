@@ -1,0 +1,225 @@
+<script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
+type Action = 'start' | 'stop' | 'restart'
+
+const { data, error } = await useContainers()
+type Service = NonNullable<typeof data.value>['containers'][number]
+
+const config = useRuntimeConfig()
+const toast = useToast()
+
+const ALL = 'Tous les projets'
+const route = useRoute()
+const project = ref<string>(config.public.defaultProject || ALL)
+const search = ref('')
+
+// Ouverture depuis la recherche globale : /services?q=<nom>
+watch(() => route.query.q, (q) => {
+  if (typeof q !== 'string') return
+  search.value = q
+  project.value = ALL
+}, { immediate: true })
+
+const projects = computed(() => {
+  const names = new Set(data.value?.containers.map(c => c.project ?? 'sans projet'))
+  return [ALL, ...[...names].sort()]
+})
+
+const services = computed(() => (data.value?.containers ?? []).filter((c) => {
+  if (project.value !== ALL && (c.project ?? 'sans projet') !== project.value) return false
+  const needle = search.value.trim().toLowerCase()
+  return !needle || c.name.toLowerCase().includes(needle) || c.image.toLowerCase().includes(needle)
+}))
+
+const runningCount = computed(() => services.value.filter(c => c.state === 'running').length)
+
+const columns: TableColumn<Service>[] = [
+  { accessorKey: 'name', header: 'Service' },
+  { accessorKey: 'state', header: 'État' },
+  { accessorKey: 'image', header: 'Image' },
+  { accessorKey: 'cpu', header: 'CPU' },
+  { accessorKey: 'memory', header: 'RAM' },
+  { accessorKey: 'status', header: 'Depuis' },
+  { id: 'actions', header: '' },
+]
+
+function stateBadge(service: Service) {
+  if (service.state === 'running') {
+    if (service.health === 'unhealthy') return { label: 'malade', color: 'error' as const }
+    if (service.health === 'starting') return { label: 'démarrage', color: 'warning' as const }
+    return { label: service.health === 'healthy' ? 'sain' : 'actif', color: 'success' as const }
+  }
+  if (service.state === 'restarting') return { label: 'redémarre', color: 'warning' as const }
+  if (service.state === 'paused') return { label: 'en pause', color: 'warning' as const }
+  if (service.state === 'dead') return { label: 'mort', color: 'error' as const }
+  return { label: 'arrêté', color: 'neutral' as const }
+}
+
+const ACTION_LABELS: Record<Action, { verb: string, done: string }> = {
+  start: { verb: 'Démarrer', done: 'démarré' },
+  stop: { verb: 'Arrêter', done: 'arrêté' },
+  restart: { verb: 'Redémarrer', done: 'redémarré' },
+}
+
+// Action en attente de confirmation, puis action en cours par conteneur
+const pending = ref<{ service: Service, action: Action } | null>(null)
+const running = ref<Record<string, Action>>({})
+const confirmOpen = computed({
+  get: () => pending.value !== null,
+  set: (open) => { if (!open) pending.value = null },
+})
+
+async function confirmAction() {
+  if (!pending.value) return
+  const { service, action } = pending.value
+  pending.value = null
+  running.value[service.name] = action
+  try {
+    await $fetch(`/api/containers/${encodeURIComponent(service.name)}/${action}`, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'dashboard' },
+    })
+    toast.add({ title: `${service.name} ${ACTION_LABELS[action].done}`, color: 'success', icon: 'i-lucide-circle-check' })
+  } catch (err) {
+    const message = (err as { data?: { statusMessage?: string } }).data?.statusMessage ?? String(err)
+    toast.add({ title: `Échec : ${ACTION_LABELS[action].verb.toLowerCase()} ${service.name}`, description: message, color: 'error', icon: 'i-lucide-circle-x' })
+  } finally {
+    delete running.value[service.name]
+    await refreshNuxtData('containers')
+  }
+}
+</script>
+
+<template>
+  <UCard :ui="{ body: 'p-0 sm:p-0' }">
+    <template #header>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="font-semibold">Services</h2>
+          <p class="text-sm text-muted">{{ runningCount }} / {{ services.length }} en cours d'exécution</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <UInput v-model="search" icon="i-lucide-search" placeholder="Filtrer…" class="w-44" />
+          <USelect v-model="project" :items="projects" class="w-48" />
+        </div>
+      </div>
+    </template>
+
+    <UAlert
+      v-if="error"
+      icon="i-lucide-triangle-alert"
+      color="error"
+      variant="subtle"
+      title="Impossible de lister les conteneurs"
+      :description="error.statusMessage"
+      class="m-4"
+    />
+    <UAlert
+      v-else-if="data && !data.metricsAvailable"
+      icon="i-lucide-triangle-alert"
+      color="warning"
+      variant="subtle"
+      title="Métriques CPU et RAM indisponibles (Prometheus ne répond pas)"
+      class="m-4"
+    />
+
+    <UTable :data="services" :columns="columns" :loading="!data && !error" class="w-full">
+      <template #name-cell="{ row }">
+        <div class="flex items-center gap-1.5">
+          <span class="font-medium">{{ row.original.name }}</span>
+          <UButton
+            v-if="row.original.url"
+            :to="row.original.url"
+            target="_blank"
+            icon="i-lucide-external-link"
+            color="neutral"
+            variant="link"
+            size="xs"
+            :aria-label="`Ouvrir ${row.original.name}`"
+          />
+        </div>
+        <span v-if="project === ALL && row.original.project" class="text-xs text-muted">{{ row.original.project }}</span>
+      </template>
+
+      <template #state-cell="{ row }">
+        <UBadge :color="stateBadge(row.original).color" variant="subtle">
+          {{ stateBadge(row.original).label }}
+        </UBadge>
+      </template>
+
+      <template #image-cell="{ row }">
+        <span class="font-mono text-xs text-muted">{{ row.original.image }}</span>
+      </template>
+
+      <template #cpu-cell="{ row }">
+        <span class="tabular-nums">{{ formatPercent(row.original.cpu) }}</span>
+      </template>
+
+      <template #memory-cell="{ row }">
+        <span class="tabular-nums">{{ formatBytes(row.original.memory) }}</span>
+      </template>
+
+      <template #status-cell="{ row }">
+        <span class="text-xs text-muted">{{ row.original.status }}</span>
+      </template>
+
+      <template #actions-cell="{ row }">
+        <div class="flex justify-end gap-1">
+          <template v-if="row.original.state === 'running'">
+            <UButton
+              icon="i-lucide-rotate-cw"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :loading="running[row.original.name] === 'restart'"
+              :disabled="!!running[row.original.name]"
+              :aria-label="`Redémarrer ${row.original.name}`"
+              @click="pending = { service: row.original, action: 'restart' }"
+            />
+            <UButton
+              v-if="!row.original.stopProtected"
+              icon="i-lucide-square"
+              color="error"
+              variant="ghost"
+              size="sm"
+              :loading="running[row.original.name] === 'stop'"
+              :disabled="!!running[row.original.name]"
+              :aria-label="`Arrêter ${row.original.name}`"
+              @click="pending = { service: row.original, action: 'stop' }"
+            />
+          </template>
+          <UButton
+            v-else
+            icon="i-lucide-play"
+            color="success"
+            variant="ghost"
+            size="sm"
+            :loading="running[row.original.name] === 'start'"
+            :disabled="!!running[row.original.name]"
+            :aria-label="`Démarrer ${row.original.name}`"
+            @click="pending = { service: row.original, action: 'start' }"
+          />
+        </div>
+      </template>
+    </UTable>
+
+    <UModal
+      v-model:open="confirmOpen"
+      :title="pending ? `${ACTION_LABELS[pending.action].verb} ${pending.service.name} ?` : ''"
+      :description="pending?.action === 'restart' ? 'Le service sera indisponible pendant le redémarrage.' : undefined"
+    >
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton label="Annuler" color="neutral" variant="outline" @click="pending = null" />
+          <UButton
+            v-if="pending"
+            :label="ACTION_LABELS[pending.action].verb"
+            :color="pending.action === 'stop' ? 'error' : 'primary'"
+            @click="confirmAction"
+          />
+        </div>
+      </template>
+    </UModal>
+  </UCard>
+</template>

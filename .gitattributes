@@ -1,0 +1,4 @@
+# Fins de ligne Unix obligatoires : un script ou un Dockerfile en CRLF ne s'exécute plus
+*.sh text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf

@@ -18,7 +18,9 @@ RED = \033[0;31m
 BLUE = \033[0;34m
 NC = \033[0m # No Color
 
-.PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts
+.PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
+	logs-socket-proxy logs-wud logs-dashboard logs-prometheus logs-grafana logs-restic update-one \
+	backup-now backup-snapshots backup-check backup-oracle backup-restore-test
 
 # Commande par défaut
 help: ## Affiche cette aide
@@ -93,6 +95,24 @@ logs-mailer: ## Affiche les logs de Mailer (Mailpit) uniquement
 
 logs-mariadb: ## Affiche les logs de MariaDB uniquement
 	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f mariadb
+
+logs-socket-proxy: ## Affiche les logs du proxy du socket Docker
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f docker-socket-proxy
+
+logs-wud: ## Affiche les logs de WUD (suivi des mises à jour)
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f wud
+
+logs-dashboard: ## Affiche les logs du dashboard Nuxt
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f dashboard
+
+logs-prometheus: ## Affiche les logs de Prometheus uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f prometheus
+
+logs-grafana: ## Affiche les logs de Grafana uniquement
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f grafana
+
+logs-restic: ## Affiche les logs des sauvegardes Restic
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f restic
 
 logs-plumo: ## Affiche les logs de Plumo (backend + frontend)
 	@if [ -f $(COMPOSE_FILE_PLUMO) ]; then \
@@ -255,6 +275,34 @@ dev: ## Mode développement avec logs en temps réel
 # Commandes de maintenance
 update: pull restart ## Met à jour et redémarre les services
 
+update-one: ## Met à jour un service sans passer par WUD (make update-one s=glance)
+	@if [ -z "$(s)" ]; then echo "$(RED)Usage: make update-one s=<service>$(NC)"; exit 1; fi
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) pull $(s)
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) up -d $(s)
+
 health: ## Vérifie la santé des services
 	@echo "$(GREEN)Vérification de la santé des services:$(NC)"
-	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(traefik|portainer|adminer|plumo|dozzle|mailer|mariadb)"
+	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(traefik|portainer|adminer|plumo|dozzle|mailer|mariadb|socket-proxy|dashboard|wud|cadvisor|node-exporter|prometheus|grafana|restic)"
+
+# Sauvegardes (Restic)
+RESTIC = docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) exec restic
+
+backup-now: ## Lance une sauvegarde immédiate (MariaDB, Portainer, exports Oracle)
+	$(RESTIC) /scripts/backup.sh
+
+backup-snapshots: ## Liste les snapshots de sauvegarde
+	$(RESTIC) restic snapshots
+
+backup-check: ## Vérifie l'intégrité du dépôt de sauvegarde
+	$(RESTIC) restic check
+
+backup-restore-test: ## Restaure le dernier dump MariaDB dans une base jetable et le vérifie (db=<base>)
+	$(RESTIC) /scripts/restore-test.sh $(db)
+
+backup-oracle: ## Exporte Oracle (Data Pump) puis lance une sauvegarde
+	@echo "$(YELLOW)Export Data Pump d'Oracle...$(NC)"
+	docker exec oracle bash -c 'expdp system/"$$ORACLE_PASSWORD"@XEPDB1 FULL=Y DIRECTORY=DATA_PUMP_DIR DUMPFILE=full_%U.dmp LOGFILE=full.log REUSE_DUMPFILES=Y'
+	@mkdir -p mnt/restic/dumps
+	@rm -rf mnt/restic/dumps/*
+	docker cp oracle:/opt/oracle/admin/XE/dpdump/. mnt/restic/dumps/
+	@$(MAKE) backup-now

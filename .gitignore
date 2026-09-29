@@ -1,1 +1,15 @@
-./mnt/
+.env
+
+# Données des services (seule la configuration de mnt/ est versionnée)
+mnt/*/data/
+mnt/oracle/
+mnt/postgres/
+mnt/restic/repo/
+mnt/restic/dumps/
+mnt/restic/status/
+mnt/wud/store/
+mnt/organizr/config/
+node_modules/
+
+# Sauvegarde du compose créée par WUD avant chaque mise à jour
+*.back

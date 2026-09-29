@@ -1,190 +1,584 @@
 services:
+
+  # Seul conteneur (avec Portainer) à monter le socket Docker.
+  # Expose l'API en lecture seule (POST=0) sur le réseau interne socket_proxy.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+
+    environment:
+      - CONTAINERS=1
+      - NETWORKS=1
+      - IMAGES=1
+      - INFO=1
+      - EVENTS=1
+      - VERSION=1
+      - PING=1
+      - POST=0
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    labels:
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - socket_proxy
+
+  # N'autorise que start/stop/restart d'un conteneur existant (ni liste,
+  # ni création, ni exec, ni pull). Utilisé par le dashboard uniquement.
+  docker-socket-proxy-actions:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker-socket-proxy-actions
+    restart: unless-stopped
+
+    environment:
+      - POST=1
+      - CONTAINERS=0
+      - ALLOW_START=1
+      - ALLOW_STOP=1
+      - ALLOW_RESTARTS=1
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    labels:
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - socket_proxy_actions
+
   traefik:
-    image: traefik:latest
+    image: traefik:v3.6
+    container_name: traefik
+    restart: unless-stopped
+
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
+      - "--providers.docker.network=bme_network"
+
       - "--api.dashboard=true"
-      - "--api.insecure=true" # ⚠ accès libre, à retirer en prod
+
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.dashboard.address=:9001"
+      - "--entrypoints.metrics.address=:8082"
+
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=metrics"
+
+    ports:
+      - "80:80"
+      - "443:443"
 
     environment:
       - DOCKER_API_VERSION=1.40
+
+    volumes:
+      - ./letsencrypt:/letsencrypt
+
+    depends_on:
+      - docker-socket-proxy
+
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.local`)"
+      - "traefik.http.routers.traefik.rule=Host(`local-traefik.${DOMAIN}`)"
       - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
+
       - "glance.name=Traefik"
       - "glance.icon=si:traefikproxy"
-      - "glance.url=http(`traefik.local`)"
+      - "glance.url=http://local-traefik.${DOMAIN}"
       - "glance.description=Reverse Proxy"
       - "glance.id=traefik"
-    ports:
-      - "80:80"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./letsencrypt:/letsencrypt
+
+      - "wud.watch=true"
+      - "wud.tag.include=^v3\\.\\d+$$"
+
     networks:
       - bme_network
-      - bme_network_aux
-  # Portainer UI
+      - socket_proxy
+
+  # Portainer garde le socket direct : il a besoin de l'API en écriture
+  # (POST, exec, volumes...), un proxy n'apporterait aucune restriction.
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:2.39.1
     container_name: portainer
-    ports:
-      - "9000:9000"
+    restart: unless-stopped
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./mnt/portainer/data:/data
+
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`${SUBDOMAIN}-portainer.${DOMAIN}`)"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
       - "glance.name=Portainer"
       - "glance.icon=si:portainer"
       - "glance.url=http://${SUBDOMAIN}-portainer.${DOMAIN}"
       - "glance.description=Container Management"
       - "glance.id=portainer"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./mnt/portainer/data:/data
+
+      - "wud.watch=true"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
+
     networks:
       - bme_network
-      - bme_network_aux
+
   adminer:
     image: adminer:latest
     container_name: adminer
-    networks:
-      - bme_network
-      - bme_network_aux
+
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.adminer.rule=Host(`${SUBDOMAIN}-adminer.${DOMAIN}`)"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
-  oracle:
-    image: gvenzl/oracle-xe:21-slim
-    environment:
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-password}
-      APP_USER: ${ORACLE_USER:-RGZ}
-      APP_USER_PASSWORD: ${ORACLE_USER_PASSWORD:-password}
-      NLS_LANG: FRENCH_FRANCE.AL32UTF8
-    ports:
-      - "1521:1521"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.oracle.rule=Host(`${SUBDOMAIN}-oracle.${DOMAIN}`)"
-      - "traefik.http.services.oracle.loadbalancer.server.port=1521"
-    volumes:
-      - oracle_data:/opt/oracle/oradata
+
+      - "glance.name=Adminer"
+      - "glance.icon=si:adminer"
+      - "glance.url=http://${SUBDOMAIN}-adminer.${DOMAIN}"
+      - "glance.description=Database Client"
+      - "glance.id=adminer"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
     networks:
       - bme_network
-      - bme_network_aux
-  mailer:
-    container_name: mailer
-    image: axllent/mailpit:latest
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.mailer.rule=Host(`${SUBDOMAIN}-mailer.${DOMAIN}`)"
-      - "traefik.http.services.mailer.loadbalancer.server.port=8025"
-      - "glance.name=Mailpit"
-      - "glance.icon=si:mailtrap"
-      - "glance.url=http://${SUBDOMAIN}-mailer.${DOMAIN}"
-      - "glance.description=Mail Catcher & Testing"
-      - "glance.id=mailpit"
-    ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # HTTP (UI)
-    networks:
-      bme_network:
-        aliases:
-            - ${SUBDOMAIN}-mailer.${DOMAIN}
-      bme_network_aux:
-  glance:
-    container_name: glance
-    image: glanceapp/glance
-    restart: unless-stopped
-    environment:
-      - DOCKER_API_VERSION=1.40
-    volumes:
-      - ./mnt/glance/config:/app/config
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - bme_network
-      - bme_network_aux
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
-      - "traefik.http.services.glance.loadbalancer.server.port=8080"
-  organizr:
-    image: organizr/organizr
-    container_name: organizr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Paris
-    volumes:
-      - ./mnt/organizr/config:/config
-    restart: unless-stopped
-    depends_on:
-      - traefik
-      - mariadb
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
-      - "traefik.http.services.organizr.loadbalancer.server.port=80"
-    networks:
-      - bme_network
-      - bme_network_aux
+
   mariadb:
-    image: mariadb:latest
+    image: mariadb:12.2
     container_name: mariadb
     restart: unless-stopped
+    stop_grace_period: 1m
+
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
       MARIADB_DATABASE: ${MARIADB_DATABASE:-db_master}
       MARIADB_USER: ${MARIADB_USER:-admin}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD:-password}
+
     volumes:
       - ./mnt/mariadb/data:/var/lib/mysql
-      - ./mnt/adminer/config:/etc/mysql/conf.d
+      - ./mnt/mariadb/config:/etc/mysql/conf.d
+
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.mariadb.rule=Host(`${SUBDOMAIN}-mariadb.${DOMAIN}`)"
-      - "traefik.http.services.mariadb.loadbalancer.server.port=3306"
       - "glance.name=MariaDB"
       - "glance.icon=si:mariadb"
-      - "glance.url=http://${SUBDOMAIN}-mariadb.${DOMAIN}"
-      - "glance.description=SQL Database (MariaDB)"
+      - "glance.description=SQL Database"
       - "glance.id=mariadb"
+
+      - "wud.watch=true"
+      - "wud.tag.include=^\\d+\\.\\d+$$"
+
     networks:
       - bme_network
-      - bme_network_aux
+
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: oracle
+    # Oracle a besoin de plus que les 10 s par défaut pour s'arrêter proprement
+    stop_grace_period: 2m
+
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-password}
+      APP_USER: ${ORACLE_USER:-RGZ}
+      APP_USER_PASSWORD: ${ORACLE_USER_PASSWORD:-password}
+      NLS_LANG: FRENCH_FRANCE.AL32UTF8
+
+    ports:
+      - "1521:1521"
+
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+
+    labels:
+      - "glance.name=Oracle XE"
+      - "glance.icon=si:oracle"
+      - "glance.description=Oracle Database"
+      - "glance.id=oracle"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  mailer:
+    image: axllent/mailpit:latest
+    container_name: mailer
+    restart: unless-stopped
+
+    ports:
+      - "1025:1025"
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailer.rule=Host(`${SUBDOMAIN}-mailer.${DOMAIN}`)"
+      - "traefik.http.services.mailer.loadbalancer.server.port=8025"
+
+      - "glance.name=Mailpit"
+      - "glance.icon=si:mailtrap"
+      - "glance.url=http://${SUBDOMAIN}-mailer.${DOMAIN}"
+      - "glance.description=Mail Catcher"
+      - "glance.id=mailpit"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  glance:
+    image: glanceapp/glance
+    container_name: glance
+    restart: unless-stopped
+
+    environment:
+      - DOCKER_API_VERSION=1.40
+
+    volumes:
+      - ./mnt/glance/config:/app/config
+
+    depends_on:
+      - docker-socket-proxy
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
+      - "traefik.http.services.glance.loadbalancer.server.port=8080"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+      - socket_proxy
+
+  organizr:
+    image: organizr/organizr
+    container_name: organizr
+    restart: unless-stopped
+
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+
+    volumes:
+      - ./mnt/organizr/config:/config
+
+    depends_on:
+      - mariadb
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
+      - "traefik.http.services.organizr.loadbalancer.server.port=80"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
   dozzle:
     image: amir20/dozzle:latest
     container_name: dozzle
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+    environment:
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+
+    depends_on:
+      - docker-socket-proxy
+
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dozzle.rule=Host(`${SUBDOMAIN}-dozzle.${DOMAIN}`)"
       - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+
       - "glance.name=Dozzle"
       - "glance.icon=si:docker"
       - "glance.url=http://${SUBDOMAIN}-dozzle.${DOMAIN}"
-      - "glance.description=Real-time Log Viewer"
+      - "glance.description=Docker Logs"
       - "glance.id=dozzle"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
     networks:
       - bme_network
-      - bme_network_aux
+      - socket_proxy
+
+  # Suivi et application des mises à jour d'images. Alerte dans Mailpit ;
+  # la mise à jour se lance à la main depuis l'interface WUD (AUTO=false) :
+  # WUD réécrit le tag dans ce fichier compose puis recrée le conteneur.
+  # Socket direct : pull + recréation = accès complet à l'API, un proxy
+  # n'apporterait aucune restriction (même exception que Portainer).
+  wud:
+    image: getwud/wud:latest
+    container_name: wud
     restart: unless-stopped
+
+    environment:
+      - TZ=Europe/Paris
+      - WUD_AUTH_ADMIN_USER=admin
+      - WUD_AUTH_ADMIN_PASSWORD=${WUD_ADMIN_PASSWORD:-admin}
+      - WUD_WATCHER_LOCAL_WATCHBYDEFAULT=false
+      - WUD_WATCHER_LOCAL_CRON=${WUD_CRON:-0 12 * * *}
+      - WUD_TRIGGER_SMTP_MAILPIT_HOST=mailer
+      - WUD_TRIGGER_SMTP_MAILPIT_PORT=1025
+      - WUD_TRIGGER_SMTP_MAILPIT_FROM_ADDRESS=wud@docker-master.local
+      - WUD_TRIGGER_SMTP_MAILPIT_TO=dev@docker-master.local
+      - WUD_TRIGGER_SMTP_MAILPIT_ALLOWCUSTOMTLD=true
+      - WUD_TRIGGER_DOCKERCOMPOSE_STACK_FILE=/project/docker-compose.traefik.yaml
+      - WUD_TRIGGER_DOCKERCOMPOSE_STACK_AUTO=false
+      - WUD_TRIGGER_DOCKERCOMPOSE_STACK_BACKUP=true
+      - WUD_TRIGGER_DOCKERCOMPOSE_STACK_PRUNE=true
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./mnt/wud/store:/store
+      - .:/project
+
+    depends_on:
+      - mailer
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wud.rule=Host(`${SUBDOMAIN}-wud.${DOMAIN}`)"
+      - "traefik.http.services.wud.loadbalancer.server.port=3000"
+
+      - "glance.name=WUD"
+      - "glance.icon=si:docker"
+      - "glance.url=http://${SUBDOMAIN}-wud.${DOMAIN}"
+      - "glance.description=Image Updates"
+      - "glance.id=wud"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    mem_limit: 256m
+
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=30s"
+      - "--store_container_labels=false"
+      - "--whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service"
+
+    devices:
+      - /dev/kmsg
+
+    # Le healthcheck de l'image v0.60.6 passe à wget une option inconnue de BusyBox
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+
+    labels:
+      - "wud.watch=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - bme_network
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    pid: host
+    mem_limit: 64m
+
+    command:
+      - "--path.rootfs=/host"
+
+    volumes:
+      - /:/host:ro
+
+    labels:
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    mem_limit: 512m
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--storage.tsdb.retention.size=1GB"
+
+    volumes:
+      - ./mnt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`${SUBDOMAIN}-prometheus.${DOMAIN}`)"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+
+      - "glance.name=Prometheus"
+      - "glance.icon=si:prometheus"
+      - "glance.url=http://${SUBDOMAIN}-prometheus.${DOMAIN}"
+      - "glance.description=Metrics"
+      - "glance.id=prometheus"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=http://${SUBDOMAIN}-grafana.${DOMAIN}
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+
+    volumes:
+      - ./mnt/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./mnt/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+
+    depends_on:
+      - prometheus
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`${SUBDOMAIN}-grafana.${DOMAIN}`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+      - "glance.name=Grafana"
+      - "glance.icon=si:grafana"
+      - "glance.url=http://${SUBDOMAIN}-grafana.${DOMAIN}"
+      - "glance.description=Dashboards"
+      - "glance.id=grafana"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  # Sauvegardes chiffrées. MariaDB est sauvegardée par dump (cohérent),
+  # Oracle via `make backup-oracle` (export Data Pump déposé dans mnt/restic/dumps).
+  restic:
+    build: ./mnt/restic
+    image: docker-master/restic:local
+    container_name: restic
+    # Nom d'hôte fixe : restic regroupe les snapshots par hôte pour la rétention
+    hostname: docker-master
+    restart: unless-stopped
+
+    environment:
+      - TZ=Europe/Paris
+      - RESTIC_REPOSITORY=/repo
+      - RESTIC_PASSWORD=${RESTIC_PASSWORD}
+      - RESTIC_CRON=${RESTIC_CRON:-30 12 * * *}
+      - RESTIC_CHECK_CRON=${RESTIC_CHECK_CRON:-0 13 * * 1}
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-root}
+      - BACKUP_MAIL_FROM=restic@docker-master.local
+      - BACKUP_MAIL_TO=dev@docker-master.local
+
+    volumes:
+      - ./mnt/portainer/data:/source/portainer:ro
+      - ./mnt/restic/dumps:/source/oracle-dumps:ro
+      - ./mnt/restic/status:/status
+      - ${RESTIC_REPOSITORY_PATH:-./mnt/restic/repo}:/repo
+
+    depends_on:
+      - mariadb
+
+    labels:
+      - "glance.name=Restic"
+      - "glance.icon=si:restic"
+      - "glance.description=Backups"
+      - "glance.id=restic"
+
+    networks:
+      - bme_network
+
+  # Dashboard Nuxt de la stack : état des services (lecture seule), actions
+  # start/stop/restart via le proxy dédié, métriques, mises à jour WUD, sauvegardes.
+  # Protégé par le même login que le dashboard Traefik.
+  dashboard:
+    build: ./mnt/dashboard
+    image: docker-master/dashboard:local
+    container_name: dashboard
+    restart: unless-stopped
+
+    environment:
+      - TZ=Europe/Paris
+      - NUXT_WUD_PASSWORD=${WUD_ADMIN_PASSWORD:-admin}
+      - NUXT_PUBLIC_WUD_PUBLIC_URL=http://${SUBDOMAIN}-wud.${DOMAIN}
+
+    volumes:
+      - ./mnt/restic/status:/status:ro
+
+    depends_on:
+      - docker-socket-proxy
+      - docker-socket-proxy-actions
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`${SUBDOMAIN}-dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard.middlewares=traefik-auth"
+      - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
+
+      - "glance.name=Dashboard"
+      - "glance.icon=si:nuxt"
+      - "glance.url=http://${SUBDOMAIN}-dashboard.${DOMAIN}"
+      - "glance.description=Stack Dashboard"
+      - "glance.id=dashboard"
+
+    networks:
+      - bme_network
+      - socket_proxy
+      - socket_proxy_actions
+
 volumes:
-  portainer_data:
-  organizer_data:
   oracle_data:
-  mariadb_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   bme_network:
     external: true
-  bme_network_aux:
-    external: true
+  socket_proxy:
+    internal: true
+  socket_proxy_actions:
+    internal: true
