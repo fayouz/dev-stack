@@ -1,0 +1,16 @@
+{
+  "name": "Exemple : GET /api/exemple/bonjour?nom=...",
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/exemple/bonjour"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "message": "Bonjour {{request.query.nom}}",
+      "date": "{{now format='yyyy-MM-dd HH:mm:ss'}}",
+      "id": "{{randomValue type='UUID'}}"
+    }
+  }
+}

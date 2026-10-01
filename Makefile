@@ -19,8 +19,8 @@ BLUE = \033[0;34m
 NC = \033[0m # No Color
 
 .PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
-	logs-socket-proxy logs-wud logs-dashboard logs-prometheus logs-grafana logs-restic update-one \
-	backup-now backup-snapshots backup-check backup-oracle backup-restore-test
+	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-prometheus logs-grafana logs-restic update-one \
+	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init
 
 # Commande par défaut
 help: ## Affiche cette aide
@@ -104,6 +104,9 @@ logs-wud: ## Affiche les logs de WUD (suivi des mises à jour)
 
 logs-dashboard: ## Affiche les logs du dashboard Nuxt
 	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f dashboard
+
+logs-registry: ## Affiche les logs du cache d'images Docker Hub
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f registry-cache
 
 logs-prometheus: ## Affiche les logs de Prometheus uniquement
 	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f prometheus
@@ -274,6 +277,25 @@ dev: ## Mode développement avec logs en temps réel
 
 # Commandes de maintenance
 update: pull restart ## Met à jour et redémarre les services
+
+# Lit une variable de .env (sans le "sourcer" : des valeurs comme "0 12 * * *" le casseraient)
+env_value = $$(grep '^$(1)=' .env | cut -d= -f2-)
+
+healthchecks-init: ## Crée ou met à jour les contrôles Healthchecks de la stack (idempotent)
+	@out=$$(docker exec -i \
+		-e "HC_OWNER_EMAIL=admin@$(call env_value,DOMAIN)" \
+		-e "HC_PING_KEY=$(call env_value,HEALTHCHECKS_PING_KEY)" \
+		-e "HC_BACKUP_CRON=$(call env_value,RESTIC_CRON)" \
+		-e "HC_CHECK_CRON=$(call env_value,RESTIC_CHECK_CRON)" \
+		healthchecks ./manage.py shell < mnt/healthchecks/init_checks.py) || exit 1; \
+	echo "$$out" | grep -v '^PING_KEY='; \
+	key=$$(echo "$$out" | sed -n 's/^PING_KEY=//p'); \
+	if grep -q '^HEALTHCHECKS_PING_KEY=' .env; then sed -i "s/^HEALTHCHECKS_PING_KEY=.*/HEALTHCHECKS_PING_KEY=$$key/" .env; \
+	else printf 'HEALTHCHECKS_PING_KEY=%s\n' "$$key" >> .env; fi; \
+	echo "$(GREEN)Clé de ping enregistrée dans .env. Recréer restic pour l'utiliser : docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) up -d restic$(NC)"
+
+registry-mirror: ## Branche le daemon Docker sur le cache d'images (sudo, sans redémarrage)
+	@sudo ./scripts/enable_registry_mirror.sh
 
 update-one: ## Met à jour un service sans passer par WUD (make update-one s=glance)
 	@if [ -z "$(s)" ]; then echo "$(RED)Usage: make update-one s=<service>$(NC)"; exit 1; fi

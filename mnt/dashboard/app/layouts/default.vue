@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 
-const config = useRuntimeConfig()
 const { data: containers } = await useContainers()
 const { data: updates } = await useUpdates()
 const lastRefresh = useLastRefresh()
 
-const problemCount = computed(() => (containers.value?.containers ?? [])
-  .filter(c => c.project === config.public.defaultProject && (c.state !== 'running' || c.health === 'unhealthy'))
+const all = computed(() => containers.value?.containers ?? [])
+
+// Problèmes de la stack et des outils ; les applications s'arrêtent souvent volontairement
+const problemCount = computed(() => all.value
+  .filter(c => (c.category === 'stack' || c.category === 'tools') && (c.state !== 'running' || c.health === 'unhealthy'))
   .length)
 
 const navigation = computed<NavigationMenuItem[]>(() => [
@@ -39,35 +41,68 @@ const TOOL_ICONS: Record<string, string> = {
   adminer: 'i-lucide-database',
   glance: 'i-lucide-panels-top-left',
   organizr: 'i-lucide-layout-grid',
+  'it-tools': 'i-lucide-wrench',
+  tinyauth: 'i-lucide-key-round',
+  hoppscotch: 'i-lucide-send',
+  wiremock: 'i-lucide-drama',
+  healthchecks: 'i-lucide-heart-pulse',
 }
-const tools = computed(() => (containers.value?.containers ?? [])
-  .filter(c => c.url && c.project === config.public.defaultProject && c.name !== 'dashboard')
+const links = (category: Category) => all.value
+  .filter(c => c.category === category && c.url && c.name !== 'dashboard')
   .map(c => ({
     label: c.name,
     icon: TOOL_ICONS[c.name] ?? 'i-lucide-external-link',
     to: c.url!,
     target: '_blank',
-  })))
+  }))
+const stackLinks = computed(() => links('stack'))
+const toolLinks = computed(() => links('tools'))
 
-// Recherche globale (⌘K) : pages, services et outils
+// Applications : un lien par projet Compose, vers la page Services filtrée
+const appProjects = computed<NavigationMenuItem[]>(() => {
+  const projects = new Map<string, { running: number, total: number }>()
+  for (const c of all.value.filter(c => c.category === 'app')) {
+    const key = c.project ?? 'sans projet'
+    const entry = projects.get(key) ?? { running: 0, total: 0 }
+    entry.total++
+    if (c.state === 'running') entry.running++
+    projects.set(key, entry)
+  }
+  return [...projects].sort(([a], [b]) => a.localeCompare(b)).map(([name, count]) => ({
+    label: name,
+    icon: 'i-lucide-app-window',
+    to: { path: '/services', query: { category: 'app', project: name } },
+    exactQuery: true,
+    badge: { label: `${count.running}/${count.total}`, color: 'neutral', variant: 'outline' },
+  }))
+})
+
+// Menu secondaire : une section repliable par catégorie
+const sections = computed<NavigationMenuItem[]>(() => [
+  { label: CATEGORIES.app.label, icon: CATEGORIES.app.icon, defaultOpen: true, children: appProjects.value },
+  { label: CATEGORIES.tools.label, icon: CATEGORIES.tools.icon, defaultOpen: true, children: toolLinks.value },
+  { label: CATEGORIES.stack.label, icon: CATEGORIES.stack.icon, defaultOpen: false, children: stackLinks.value },
+].filter(section => section.children.length))
+
+// Recherche globale (⌘K) : pages, puis services groupés par catégorie
 const searchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [
   {
     id: 'pages',
     label: 'Pages',
     items: navigation.value.map(item => ({ label: item.label, icon: item.icon, to: item.to as string })),
   },
-  {
-    id: 'services',
-    label: 'Services',
-    items: (containers.value?.containers ?? []).map(c => ({
+  ...CATEGORY_KEYS.map(key => ({
+    id: key,
+    label: CATEGORIES[key].label,
+    items: all.value.filter(c => c.category === key).map(c => ({
       label: c.name,
-      suffix: c.project ?? undefined,
+      suffix: key === 'app' ? c.project ?? undefined : undefined,
       description: c.image,
       icon: c.state === 'running' ? 'i-lucide-circle-check' : 'i-lucide-circle-stop',
       to: { path: '/services', query: { q: c.name } },
     })),
-  },
-  { id: 'tools', label: 'Outils', items: tools.value },
+  })),
+  { id: 'links', label: 'Ouvrir un outil', items: [...toolLinks.value, ...stackLinks.value] },
 ])
 
 // Services et hôte toutes les 5 s, mises à jour et sauvegardes toutes les minutes
@@ -103,10 +138,8 @@ onBeforeUnmount(() => clearInterval(timer))
       <template #default="{ collapsed }">
         <UNavigationMenu :items="navigation" :collapsed="collapsed" orientation="vertical" tooltip />
 
-        <div class="mt-auto">
-          <p v-if="!collapsed" class="mb-1 px-2.5 text-xs font-medium text-muted">Outils</p>
-          <UNavigationMenu :items="tools" :collapsed="collapsed" orientation="vertical" tooltip />
-        </div>
+        <USeparator />
+        <UNavigationMenu :items="sections" :collapsed="collapsed" orientation="vertical" tooltip popover />
       </template>
 
       <template #footer="{ collapsed }">

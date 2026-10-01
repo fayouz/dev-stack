@@ -6,30 +6,45 @@ type Action = 'start' | 'stop' | 'restart'
 const { data, error } = await useContainers()
 type Service = NonNullable<typeof data.value>['containers'][number]
 
-const config = useRuntimeConfig()
 const toast = useToast()
-
-const ALL = 'Tous les projets'
 const route = useRoute()
-const project = ref<string>(config.public.defaultProject || ALL)
+
+const ALL_PROJECTS = 'Tous les projets'
+const category = ref<Category | 'all'>('all')
+const project = ref(ALL_PROJECTS)
 const search = ref('')
 
-// Ouverture depuis la recherche globale : /services?q=<nom>
-watch(() => route.query.q, (q) => {
-  if (typeof q !== 'string') return
-  search.value = q
-  project.value = ALL
+// Liens profonds : /services?category=app&project=plumo, /services?q=<nom> (recherche globale)
+watch(() => route.query, (query) => {
+  if (typeof query.q === 'string') {
+    search.value = query.q
+    category.value = 'all'
+  }
+  if (typeof query.category === 'string' && (query.category === 'all' || query.category in CATEGORIES)) {
+    category.value = query.category as Category | 'all'
+  }
+  project.value = typeof query.project === 'string' ? query.project : ALL_PROJECTS
 }, { immediate: true })
 
-const projects = computed(() => {
-  const names = new Set(data.value?.containers.map(c => c.project ?? 'sans projet'))
-  return [ALL, ...[...names].sort()]
-})
+const all = computed(() => data.value?.containers ?? [])
+const countIn = (cat: Category | 'all') => all.value.filter(c => cat === 'all' || c.category === cat).length
 
-const services = computed(() => (data.value?.containers ?? []).filter((c) => {
-  if (project.value !== ALL && (c.project ?? 'sans projet') !== project.value) return false
+const tabs = computed(() => [
+  { label: 'Tout', value: 'all', icon: 'i-lucide-list', badge: countIn('all') },
+  ...CATEGORY_KEYS.map(key => ({ label: CATEGORIES[key].label, value: key, icon: CATEGORIES[key].icon, badge: countIn(key) })),
+])
+
+// Les projets ne se choisissent que parmi les applications
+const appProjects = computed(() => [ALL_PROJECTS, ...new Set(all.value
+  .filter(c => c.category === 'app')
+  .map(c => c.project ?? 'sans projet'))].sort((a, b) => a === ALL_PROJECTS ? -1 : b === ALL_PROJECTS ? 1 : a.localeCompare(b)))
+
+const services = computed(() => all.value.filter((c) => {
+  if (category.value !== 'all' && c.category !== category.value) return false
+  if (category.value === 'app' && project.value !== ALL_PROJECTS && (c.project ?? 'sans projet') !== project.value) return false
   const needle = search.value.trim().toLowerCase()
   return !needle || c.name.toLowerCase().includes(needle) || c.image.toLowerCase().includes(needle)
+    || (c.project ?? '').toLowerCase().includes(needle)
 }))
 
 const runningCount = computed(() => services.value.filter(c => c.state === 'running').length)
@@ -101,9 +116,17 @@ async function confirmAction() {
         </div>
         <div class="flex flex-wrap gap-2">
           <UInput v-model="search" icon="i-lucide-search" placeholder="Filtrer…" class="w-44" />
-          <USelect v-model="project" :items="projects" class="w-48" />
+          <USelect v-if="category === 'app'" v-model="project" :items="appProjects" class="w-48" />
         </div>
       </div>
+      <UTabs
+        v-model="category"
+        :items="tabs"
+        :content="false"
+        variant="link"
+        size="sm"
+        class="mt-3 -mb-4"
+      />
     </template>
 
     <UAlert
@@ -139,7 +162,18 @@ async function confirmAction() {
             :aria-label="`Ouvrir ${row.original.name}`"
           />
         </div>
-        <span v-if="project === ALL && row.original.project" class="text-xs text-muted">{{ row.original.project }}</span>
+        <div class="mt-0.5 flex items-center gap-1.5">
+          <UBadge
+            v-if="category === 'all'"
+            :color="CATEGORIES[row.original.category].color"
+            :icon="CATEGORIES[row.original.category].icon"
+            variant="soft"
+            size="sm"
+          >
+            {{ CATEGORIES[row.original.category].label }}
+          </UBadge>
+          <span v-if="row.original.category === 'app'" class="text-xs text-muted">{{ row.original.project ?? 'sans projet' }}</span>
+        </div>
       </template>
 
       <template #state-cell="{ row }">

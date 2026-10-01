@@ -1,9 +1,6 @@
 <script setup lang="ts">
 useHead({ title: 'Vue d\'ensemble' })
 
-const config = useRuntimeConfig()
-const project = config.public.defaultProject
-
 const RANGES = [
   { label: 'Temps réel', value: 'live', icon: 'i-lucide-radio' },
   { label: '15 min', value: '15m' },
@@ -32,15 +29,28 @@ onMounted(() => {
 })
 onBeforeUnmount(() => clearInterval(timer))
 
-// --- Indicateurs de la stack
-const stack = computed(() => (containers.value?.containers ?? []).filter(c => c.project === project))
-const problems = computed(() => stack.value.filter(c => c.state !== 'running' || c.health === 'unhealthy'))
-const running = computed(() => stack.value.filter(c => c.state === 'running').length)
+// --- Indicateurs par catégorie
+const all = computed(() => containers.value?.containers ?? [])
+const inCategory = (category: Category) => all.value.filter(c => c.category === category)
+const tiles = computed(() => MAIN_CATEGORIES.map((key) => {
+  const list = inCategory(key)
+  const projects = new Set(list.map(c => c.project ?? 'sans projet')).size
+  return {
+    key,
+    ...CATEGORIES[key],
+    running: list.filter(c => c.state === 'running').length,
+    total: list.length,
+    hint: key === 'app' ? `${projects} projet${projects > 1 ? 's' : ''}` : CATEGORIES[key].description,
+  }
+}))
+// Stack et outils : doivent toujours tourner. Les applications s'arrêtent souvent volontairement.
+const platform = computed(() => all.value.filter(c => c.category === 'stack' || c.category === 'tools'))
+const problems = computed(() => platform.value.filter(c => c.state !== 'running' || c.health === 'unhealthy'))
 
 const lastBackup = computed(() => backups.value?.available ? backups.value.lastRun : null)
 
 const serviceSegments = computed(() => {
-  const count = (test: (c: typeof stack.value[number]) => boolean) => stack.value.filter(test).length
+  const count = (test: (c: typeof platform.value[number]) => boolean) => platform.value.filter(test).length
   return [
     { key: 'ok', label: 'Actifs', color: 'var(--viz-good)', icon: 'i-lucide-circle-check', count: count(c => c.state === 'running' && !c.health?.match(/unhealthy|starting/)) },
     { key: 'starting', label: 'Démarrage', color: 'var(--viz-warning)', icon: 'i-lucide-loader', count: count(c => c.state === 'restarting' || c.health === 'starting') },
@@ -116,20 +126,22 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
 
     <template #body>
       <!-- Indicateurs -->
-      <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <div class="grid grid-cols-2 gap-4 md:grid-cols-3 2xl:grid-cols-6">
         <StatTile
-          label="Services actifs"
-          :value="`${running} / ${stack.length}`"
-          icon="i-lucide-boxes"
-          :hint="`Projet ${project}`"
-          to="/services"
+          v-for="tile in tiles"
+          :key="tile.key"
+          :label="tile.label"
+          :value="`${tile.running} / ${tile.total}`"
+          :icon="tile.icon"
+          :hint="tile.hint"
+          :to="{ path: '/services', query: { category: tile.key } }"
         />
         <StatTile
           label="Problèmes"
           :value="problems.length"
           :icon="problems.length ? 'i-lucide-triangle-alert' : 'i-lucide-circle-check'"
           :status="problems.length ? 'error' : 'success'"
-          :hint="problems.length ? problems.map(p => p.name).join(', ') : 'Tout fonctionne'"
+          :hint="problems.length ? `Stack et outils : ${problems.map(p => p.name).join(', ')}` : 'Stack et outils OK'"
           to="/services"
         />
         <StatTile
@@ -170,8 +182,11 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
           :value="host?.disk ? 100 * host.disk.used / host.disk.total : null"
           :detail="`${formatBytes(host?.disk?.used)} / ${formatBytes(host?.disk?.total)} · uptime ${formatDuration(host?.uptime)}`"
         />
-        <StatusDonut :segments="serviceSegments" />
+        <StatusDonut title="Stack et outils" :segments="serviceSegments" />
       </div>
+
+      <!-- Applications en développement -->
+      <ApplicationsCard />
 
       <!-- Courbes temps réel de l'hôte -->
       <div class="grid gap-4 xl:grid-cols-2">

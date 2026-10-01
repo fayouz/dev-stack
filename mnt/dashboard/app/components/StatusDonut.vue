@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Demi-donut de la répartition des états des services, légende icône + libellé + nombre
-const props = defineProps<{
+const props = withDefaults(defineProps<{
+  title?: string
   segments: Array<{ key: string, label: string, count: number, color: string, icon: string }>
-}>()
+}>(), { title: 'État des services' })
 
 const total = computed(() => props.segments.reduce((sum, s) => sum + s.count, 0))
 const categories = computed(() => Object.fromEntries(props.segments.map(s => [s.key, { name: s.label, color: s.color }])))
@@ -11,7 +12,7 @@ const categories = computed(() => Object.fromEntries(props.segments.map(s => [s.
 <template>
   <UCard :ui="{ body: 'flex flex-col gap-1 p-4 sm:p-4' }">
     <div class="flex items-center gap-2 text-sm text-muted">
-      <UIcon name="i-lucide-boxes" /> État des services
+      <UIcon name="i-lucide-boxes" /> {{ title }}
     </div>
 
     <div class="relative">

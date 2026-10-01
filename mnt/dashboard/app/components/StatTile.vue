@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { RouteLocationRaw } from 'vue-router'
+
 defineProps<{
   label: string
   value: string | number
   icon: string
   hint?: string
-  to?: string
+  to?: RouteLocationRaw
   // Statut : toujours accompagné de son icône, jamais la couleur seule
   status?: 'success' | 'warning' | 'error' | 'neutral'
 }>()

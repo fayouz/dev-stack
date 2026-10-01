@@ -21,6 +21,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
     labels:
+      - "dashboard.category=stack"
+
       - "wud.watch=true"
       - "wud.watch.digest=true"
 
@@ -45,6 +47,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
     labels:
+      - "dashboard.category=stack"
+
       - "wud.watch=true"
       - "wud.watch.digest=true"
 
@@ -65,6 +69,7 @@ services:
       - "--api.dashboard=true"
 
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.asDefault=true"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.metrics.address=:8082"
 
@@ -85,11 +90,16 @@ services:
       - docker-socket-proxy
 
     labels:
+      - "dashboard.category=stack"
+
       - "traefik.enable=true"
       - "traefik.http.routers.traefik.rule=Host(`local-traefik.${DOMAIN}`)"
       - "traefik.http.routers.traefik.service=api@internal"
-      - "traefik.http.routers.traefik.middlewares=traefik-auth"
-      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
+      - "traefik.http.routers.traefik.middlewares=tinyauth"
+      # Défini ici (et non sur tinyauth) pour exister même quand tinyauth redémarre :
+      # l'accès reste alors fermé au lieu de casser les routeurs
+      - "traefik.http.middlewares.tinyauth.forwardauth.address=http://tinyauth:3000/api/auth/traefik"
+      - "traefik.http.middlewares.tinyauth.forwardauth.authResponseHeaders=Remote-User,Remote-Email,Remote-Name,Remote-Groups"
 
       - "glance.name=Traefik"
       - "glance.icon=si:traefikproxy"
@@ -116,6 +126,8 @@ services:
       - ./mnt/portainer/data:/data
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`${SUBDOMAIN}-portainer.${DOMAIN}`)"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
@@ -137,8 +149,11 @@ services:
     container_name: adminer
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.adminer.rule=Host(`${SUBDOMAIN}-adminer.${DOMAIN}`)"
+      - "traefik.http.routers.adminer.middlewares=tinyauth"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
 
       - "glance.name=Adminer"
@@ -170,6 +185,8 @@ services:
       - ./mnt/mariadb/config:/etc/mysql/conf.d
 
     labels:
+      - "dashboard.category=stack"
+
       - "glance.name=MariaDB"
       - "glance.icon=si:mariadb"
       - "glance.description=SQL Database"
@@ -200,6 +217,8 @@ services:
       - oracle_data:/opt/oracle/oradata
 
     labels:
+      - "dashboard.category=stack"
+
       - "glance.name=Oracle XE"
       - "glance.icon=si:oracle"
       - "glance.description=Oracle Database"
@@ -220,8 +239,11 @@ services:
       - "1025:1025"
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.mailer.rule=Host(`${SUBDOMAIN}-mailer.${DOMAIN}`)"
+      - "traefik.http.routers.mailer.middlewares=tinyauth"
       - "traefik.http.services.mailer.loadbalancer.server.port=8025"
 
       - "glance.name=Mailpit"
@@ -251,8 +273,11 @@ services:
       - docker-socket-proxy
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
+      - "traefik.http.routers.glance.middlewares=tinyauth"
       - "traefik.http.services.glance.loadbalancer.server.port=8080"
 
       - "wud.watch=true"
@@ -279,6 +304,8 @@ services:
       - mariadb
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
       - "traefik.http.services.organizr.loadbalancer.server.port=80"
@@ -301,8 +328,11 @@ services:
       - docker-socket-proxy
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.dozzle.rule=Host(`${SUBDOMAIN}-dozzle.${DOMAIN}`)"
+      - "traefik.http.routers.dozzle.middlewares=tinyauth"
       - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
 
       - "glance.name=Dozzle"
@@ -353,6 +383,8 @@ services:
       - mailer
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.wud.rule=Host(`${SUBDOMAIN}-wud.${DOMAIN}`)"
       - "traefik.http.services.wud.loadbalancer.server.port=3000"
@@ -398,6 +430,8 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
 
     labels:
+      - "dashboard.category=stack"
+
       - "wud.watch=true"
       - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
@@ -418,6 +452,8 @@ services:
       - /:/host:ro
 
     labels:
+      - "dashboard.category=stack"
+
       - "wud.watch=true"
       - "wud.watch.digest=true"
 
@@ -441,8 +477,11 @@ services:
       - prometheus_data:/prometheus
 
     labels:
+      - "dashboard.category=stack"
+
       - "traefik.enable=true"
       - "traefik.http.routers.prometheus.rule=Host(`${SUBDOMAIN}-prometheus.${DOMAIN}`)"
+      - "traefik.http.routers.prometheus.middlewares=tinyauth"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
 
       - "glance.name=Prometheus"
@@ -468,6 +507,11 @@ services:
       - GF_SERVER_ROOT_URL=http://${SUBDOMAIN}-grafana.${DOMAIN}
       - GF_ANALYTICS_REPORTING_ENABLED=false
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      # Login unique : Grafana fait confiance à l'utilisateur transmis par tinyauth
+      - GF_AUTH_PROXY_ENABLED=true
+      - GF_AUTH_PROXY_HEADER_NAME=Remote-User
+      - GF_AUTH_PROXY_HEADER_PROPERTY=username
+      - GF_AUTH_PROXY_AUTO_SIGN_UP=true
 
     volumes:
       - ./mnt/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -478,8 +522,11 @@ services:
       - prometheus
 
     labels:
+      - "dashboard.category=tools"
+
       - "traefik.enable=true"
       - "traefik.http.routers.grafana.rule=Host(`${SUBDOMAIN}-grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana.middlewares=tinyauth"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
 
       - "glance.name=Grafana"
@@ -513,6 +560,7 @@ services:
       - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-root}
       - BACKUP_MAIL_FROM=restic@docker-master.local
       - BACKUP_MAIL_TO=dev@docker-master.local
+      - HEALTHCHECKS_PING_KEY=${HEALTHCHECKS_PING_KEY:-}
 
     volumes:
       - ./mnt/portainer/data:/source/portainer:ro
@@ -524,6 +572,8 @@ services:
       - mariadb
 
     labels:
+      - "dashboard.category=stack"
+
       - "glance.name=Restic"
       - "glance.icon=si:restic"
       - "glance.description=Backups"
@@ -532,9 +582,284 @@ services:
     networks:
       - bme_network
 
+  # Login unique pour les outils web (forward-auth Traefik) : ajouter le
+  # middleware `tinyauth` à un router pour le protéger. Session partagée
+  # entre les sous-domaines de ${DOMAIN}, qui doit avoir deux niveaux
+  # (ex. dev.localhost) : les navigateurs refusent un cookie sur "localhost".
+  tinyauth:
+    image: ghcr.io/tinyauthapp/tinyauth:v5
+    container_name: tinyauth
+    restart: unless-stopped
+
+    environment:
+      - TINYAUTH_APPURL=http://${SUBDOMAIN}-auth.${DOMAIN}
+      - TINYAUTH_AUTH_USERS=${TINYAUTH_USERS}
+      - TINYAUTH_DATABASE_PATH=/data/tinyauth.db
+      - TINYAUTH_UI_TITLE=Docker Master
+      - TINYAUTH_UI_WARNINGSENABLED=false
+      - TINYAUTH_AUTH_TRUSTEDPROXIES=172.25.0.0/24
+
+    volumes:
+      - ./mnt/tinyauth/data:/data
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.tinyauth.rule=Host(`${SUBDOMAIN}-auth.${DOMAIN}`)"
+      - "traefik.http.services.tinyauth.loadbalancer.server.port=3000"
+
+      - "wud.watch=true"
+      - "wud.tag.include=^v\\d+$$"
+
+    networks:
+      - bme_network
+
+  it-tools:
+    image: ghcr.io/corentinth/it-tools:latest
+    container_name: it-tools
+    restart: unless-stopped
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.it-tools.rule=Host(`${SUBDOMAIN}-it-tools.${DOMAIN}`)"
+      - "traefik.http.routers.it-tools.middlewares=tinyauth"
+      - "traefik.http.services.it-tools.loadbalancer.server.port=80"
+
+      - "glance.name=IT Tools"
+      - "glance.icon=si:toolbox"
+      - "glance.url=http://${SUBDOMAIN}-it-tools.${DOMAIN}"
+      - "glance.description=Dev Utilities"
+      - "glance.id=it-tools"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  # Client d'API (façon Postman). Tout est servi sur une URL : / (appli),
+  # /admin (configuration : auth, SMTP → Mailpit) et /backend.
+  # Les migrations de la base s'exécutent à chaque démarrage (idempotentes).
+  hoppscotch:
+    image: hoppscotch/hoppscotch:2026.8.2
+    container_name: hoppscotch
+    restart: unless-stopped
+    entrypoint: ["tini", "--"]
+    command:
+      - sh
+      - -c
+      - cd /dist/backend && node node_modules/prisma/build/index.js migrate deploy && exec node /usr/src/app/aio_run.mjs
+
+    environment:
+      - DATABASE_URL=postgresql://hoppscotch:${HOPPSCOTCH_DB_PASSWORD}@hoppscotch-db:5432/hoppscotch
+      - DATA_ENCRYPTION_KEY=${HOPPSCOTCH_ENCRYPTION_KEY}
+      - ENABLE_SUBPATH_BASED_ACCESS=true
+      - TRUST_PROXY=true
+      - WHITELISTED_ORIGINS=http://${SUBDOMAIN}-hoppscotch.${DOMAIN},app://localhost_3200,app://hoppscotch
+      - VITE_BASE_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}
+      - VITE_SHORTCODE_BASE_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}
+      - VITE_ADMIN_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}/admin
+      - VITE_BACKEND_GQL_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/graphql
+      - VITE_BACKEND_WS_URL=ws://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/graphql
+      - VITE_BACKEND_API_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/v1
+
+    depends_on:
+      hoppscotch-db:
+        condition: service_healthy
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.hoppscotch.rule=Host(`${SUBDOMAIN}-hoppscotch.${DOMAIN}`)"
+      - "traefik.http.services.hoppscotch.loadbalancer.server.port=80"
+
+      - "glance.name=Hoppscotch"
+      - "glance.icon=si:hoppscotch"
+      - "glance.url=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}"
+      - "glance.description=API Client"
+      - "glance.id=hoppscotch"
+
+      - "wud.watch=true"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - bme_network
+
+  hoppscotch-db:
+    image: postgres:16-alpine
+    container_name: hoppscotch-db
+    restart: unless-stopped
+    stop_grace_period: 1m
+
+    environment:
+      - POSTGRES_USER=hoppscotch
+      - POSTGRES_PASSWORD=${HOPPSCOTCH_DB_PASSWORD}
+      - POSTGRES_DB=hoppscotch
+
+    volumes:
+      - hoppscotch_db:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hoppscotch -d hoppscotch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "wud.watch=true"
+      - "wud.watch.digest=true"
+
+    networks:
+      - bme_network
+
+  # Cache des images Docker Hub (pull-through) : chaque image n'est téléchargée
+  # qu'une fois puis servie en local. La source est mirror.gcr.io, le miroir de
+  # Docker Hub de Google, sans la limite anonyme (429) que l'IP partagée de
+  # l'entreprise épuise vite. Le daemon Docker l'utilise via "registry-mirrors"
+  # (make registry-mirror) et repasse par Docker Hub en direct si une image est
+  # absente du miroir ou si le cache est arrêté.
+  registry-cache:
+    image: registry:3.1.2
+    container_name: registry-cache
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:5000:5000"
+
+    environment:
+      - REGISTRY_PROXY_REMOTEURL=https://mirror.gcr.io
+      - REGISTRY_PROXY_TTL=168h
+      - REGISTRY_LOG_LEVEL=info
+      - OTEL_TRACES_EXPORTER=none
+
+    volumes:
+      - ./mnt/registry/data:/var/lib/registry
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5000/v2/"]
+      interval: 30s
+      timeout: 5s
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "wud.watch=true"
+      - "wud.tag.include=^3\\.\\d+\\.\\d+$$"
+
+    networks:
+      - bme_network
+
+  # Simulation d'API externes. Les stubs sont des fichiers JSON versionnés dans
+  # mnt/wiremock/mappings (réponses volumineuses dans mnt/wiremock/__files),
+  # rechargés avec POST /__admin/mappings/reset. Les applis l'appellent en
+  # interne sur http://wiremock:8080. Via Traefik, les mocks sont ouverts mais
+  # l'API d'administration (/__admin) passe par le login unique.
+  wiremock:
+    image: wiremock/wiremock:3.13.2
+    container_name: wiremock
+    restart: unless-stopped
+
+    command:
+      - --global-response-templating
+      - --disable-banner
+
+    environment:
+      # Fichiers de stubs créés via l'API au nom de l'utilisateur de l'hôte
+      - uid=${UID:-1000}
+
+    volumes:
+      - ./mnt/wiremock/mappings:/home/wiremock/mappings
+      - ./mnt/wiremock/__files:/home/wiremock/__files
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.wiremock.rule=Host(`${SUBDOMAIN}-wiremock.${DOMAIN}`)"
+      - "traefik.http.routers.wiremock.service=wiremock"
+      - "traefik.http.routers.wiremock-admin.rule=Host(`${SUBDOMAIN}-wiremock.${DOMAIN}`) && PathPrefix(`/__admin`)"
+      - "traefik.http.routers.wiremock-admin.middlewares=tinyauth"
+      - "traefik.http.routers.wiremock-admin.service=wiremock"
+      - "traefik.http.services.wiremock.loadbalancer.server.port=8080"
+
+      - "glance.name=WireMock"
+      - "glance.icon=si:wiremock"
+      - "glance.url=http://${SUBDOMAIN}-wiremock.${DOMAIN}/__admin/swagger-ui/"
+      - "glance.description=API Mocks"
+      - "glance.id=wiremock"
+
+      - "wud.watch=true"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - bme_network
+
+  # Surveillance des tâches planifiées : chaque tâche "pingue" son URL, une
+  # alerte part (Mailpit) si le ping n'arrive pas à l'heure ou signale un échec.
+  # Interface derrière le login unique (compte = e-mail transmis par tinyauth) ;
+  # /ping et /api restent ouverts pour les tâches (l'API a ses propres clés).
+  # Contrôles de la stack créés par : make healthchecks-init
+  healthchecks:
+    image: healthchecks/healthchecks:v4.4
+    container_name: healthchecks
+    restart: unless-stopped
+
+    environment:
+      - SECRET_KEY=${HEALTHCHECKS_SECRET_KEY}
+      - SITE_ROOT=http://${SUBDOMAIN}-healthchecks.${DOMAIN}
+      - SITE_NAME=Docker Master Healthchecks
+      - ALLOWED_HOSTS=${SUBDOMAIN}-healthchecks.${DOMAIN},healthchecks
+      - DB=sqlite
+      - DB_NAME=/data/hc.sqlite
+      - REGISTRATION_OPEN=False
+      - REMOTE_USER_HEADER=HTTP_REMOTE_EMAIL
+      - DEFAULT_FROM_EMAIL=healthchecks@docker-master.local
+      - EMAIL_HOST=mailer
+      - EMAIL_PORT=1025
+      - EMAIL_USE_TLS=False
+      - EMAIL_USE_SSL=False
+      - EMAIL_USE_VERIFICATION=False
+      - INTEGRATIONS_ALLOW_PRIVATE_IPS=True
+      - TZ=Europe/Paris
+
+    volumes:
+      - healthchecks_data:/data
+
+    depends_on:
+      - mailer
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.healthchecks.rule=Host(`${SUBDOMAIN}-healthchecks.${DOMAIN}`)"
+      - "traefik.http.routers.healthchecks.middlewares=tinyauth"
+      - "traefik.http.routers.healthchecks.service=healthchecks"
+      - "traefik.http.routers.healthchecks-ping.rule=Host(`${SUBDOMAIN}-healthchecks.${DOMAIN}`) && (PathPrefix(`/ping/`) || PathPrefix(`/api/`))"
+      - "traefik.http.routers.healthchecks-ping.service=healthchecks"
+      - "traefik.http.services.healthchecks.loadbalancer.server.port=8000"
+
+      - "glance.name=Healthchecks"
+      - "glance.icon=si:healthchecksdotio"
+      - "glance.url=http://${SUBDOMAIN}-healthchecks.${DOMAIN}"
+      - "glance.description=Cron Monitoring"
+      - "glance.id=healthchecks"
+
+      - "wud.watch=true"
+      - "wud.tag.include=^v\\d+\\.\\d+$$"
+
+    networks:
+      - bme_network
+
   # Dashboard Nuxt de la stack : état des services (lecture seule), actions
   # start/stop/restart via le proxy dédié, métriques, mises à jour WUD, sauvegardes.
-  # Protégé par le même login que le dashboard Traefik.
+  # Protégé par le login unique (tinyauth).
   dashboard:
     build: ./mnt/dashboard
     image: docker-master/dashboard:local
@@ -554,9 +879,11 @@ services:
       - docker-socket-proxy-actions
 
     labels:
+      - "dashboard.category=stack"
+
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`${SUBDOMAIN}-dashboard.${DOMAIN}`)"
-      - "traefik.http.routers.dashboard.middlewares=traefik-auth"
+      - "traefik.http.routers.dashboard.middlewares=tinyauth"
       - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
 
       - "glance.name=Dashboard"
@@ -572,6 +899,8 @@ services:
 
 volumes:
   oracle_data:
+  hoppscotch_db:
+  healthchecks_data:
   prometheus_data:
   grafana_data:
 

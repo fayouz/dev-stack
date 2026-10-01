@@ -1,12 +1,26 @@
 # Idées d'évolution de la stack
 
-Pistes à reprendre plus tard. Aucune n'est encore en place.
+Suivi des évolutions de la stack : ce qui est fait, ce qui reste à régler, et les pistes pour plus tard.
 
 Contexte à garder en tête :
 
 - **RAM de la VM WSL** : 15,6 Go au total, dont environ 57 % déjà utilisés.
 - **Proxy d'entreprise** : il intercepte le TLS. Le daemon Docker et les conteneurs sortent directement, contrairement au shell.
 - **Docker Hub** : la limite anonyme (`429 Too Many Requests`) est souvent atteinte.
+
+## Déjà en place
+
+- [x] **it-tools** (`ghcr.io/corentinth/it-tools`) : outils de dev hors ligne.
+
+- [x] **Login unique tinyauth** (`ghcr.io/tinyauthapp/tinyauth:v5`) devant les outils sans login propre, avec connexion automatique à Grafana. Il impose un domaine à deux niveaux : `DOMAIN=dev.localhost`, car les navigateurs refusent un cookie posé sur `localhost`.
+
+- [x] **Hoppscotch** (`hoppscotch/hoppscotch`, avec `hoppscotch-db` en Postgres 16) : client d'API sur `local-hoppscotch.${DOMAIN}`. L'appli fonctionne sans compte. Pour activer les comptes (synchronisation des collections, équipes), terminer l'assistant de `/admin` avec le SMTP de Mailpit (`smtp://mailer:1025`).
+
+- [x] **Cache d'images** (`registry-cache`, `registry:3.1.2`) sur `127.0.0.1:5000`, avec `mirror.gcr.io` comme source : plus de limite `429`. Le branchement du daemon se fait avec `make registry-mirror` (sudo, rechargement à chaud).
+
+- [x] **WireMock** (`wiremock/wiremock:3.13.2`) : simulation d'API externes. Stubs versionnés dans `mnt/wiremock/mappings`, appel interne sur `http://wiremock:8080`, administration (`/__admin`) derrière le login unique.
+
+- [x] **Healthchecks** (`healthchecks/healthchecks:v4.4`) : surveille la sauvegarde et la vérification Restic, avec alertes dans Mailpit. Interface derrière le login unique ; `/ping` et `/api` ouverts. Contrôles créés par `make healthchecks-init`.
 
 ## À régler en priorité
 
@@ -16,9 +30,9 @@ Contexte à garder en tête :
   - Ensuite, automatiser l'export Data Pump. `make backup-oracle` est manuel pour l'instant.
 - [ ] **Sortir `.env` du suivi git** avec `git rm --cached .env`. Il contient tous les secrets de la stack.
 - [ ] **Renforcer les mots de passe MariaDB et Oracle**, aujourd'hui `root` / `password`.
-- [ ] **Enregistrer le mot de passe du dashboard et de Traefik** dans un gestionnaire de mots de passe. `.env` n'en contient que le hash.
+- [ ] **Enregistrer le mot de passe du login unique** (tinyauth) dans un gestionnaire de mots de passe. `.env` n'en contient que le hash.
 - [ ] **Enregistrer `RESTIC_PASSWORD`** dans un gestionnaire de mots de passe. Sans lui, les sauvegardes sont irrécupérables.
-- [ ] **Compte Docker Hub pour WUD** (`WUD_REGISTRY_HUB_PUBLIC_LOGIN` / `WUD_REGISTRY_HUB_PUBLIC_PASSWORD`), ou un cache `registry:2` (voir plus bas).
+- [ ] **Compte Docker Hub pour WUD** (`WUD_REGISTRY_HUB_PUBLIC_LOGIN` / `WUD_REGISTRY_HUB_PUBLIC_PASSWORD`). WUD interroge Docker Hub directement pour lister les versions, et le cache d'images ne l'aide pas.
 
 ## Améliorations de l'existant
 
@@ -50,10 +64,8 @@ Poids : 🟢 léger · 🟡 moyen · 🔴 lourd (1 Go de RAM ou plus).
 
 | Image | Utilité | Poids |
 |---|---|---|
-| `registry:2` en cache de Docker Hub | Supprime les erreurs `429` : chaque image n'est téléchargée qu'une fois | 🟢 |
 | `prom/alertmanager` | Alertes dans Mailpit, Teams ou ntfy : conteneur arrêté, disque à plus de 90 %, sauvegarde échouée | 🟢 |
 | `binwiederhier/ntfy` | Notifications push (téléphone, bureau) pour WUD, Restic et Alertmanager | 🟢 |
-| `corentinth/it-tools` | ~80 outils de dev hors ligne (JSON, JWT, base64, hash, cron, regex…), sans rien coller dans des sites externes | 🟢 |
 | `verdaccio/verdaccio` | Cache et registre npm privé : `npm install` plus rapides derrière le proxy | 🟢 |
 
 ### Observabilité
@@ -62,13 +74,11 @@ Poids : 🟢 léger · 🟡 moyen · 🔴 lourd (1 Go de RAM ou plus).
 |---|---|---|
 | `grafana/loki` + `grafana/alloy` | Historique des logs de tous les services, cherchable dans Grafana | 🟡 |
 | `grafana/tempo` | Traces OpenTelemetry des applis (plumo, stp) dans Grafana | 🟡 |
-| `healthchecks/healthchecks` | Alerte si une tâche planifiée ne s'exécute pas (sauvegarde Restic manquée…) | 🟢 |
 
 ### Sécurité et accès
 
 | Image | Utilité | Poids |
 |---|---|---|
-| Authelia ou tinyauth (forward-auth Traefik) | Un seul login pour tous les outils, au lieu de 5 identifiants différents | 🟢 |
 | `vaultwarden/server` | Gestionnaire de mots de passe compatible Bitwarden, pour les secrets de la stack | 🟢 |
 | `quay.io/keycloak/keycloak` | SSO et OIDC pour tester l'authentification des applis | 🟡 |
 | `aquasec/trivy` | Scan de vulnérabilités des images, lancé à la demande | 🟢 |
@@ -93,14 +103,12 @@ Poids : 🟢 léger · 🟡 moyen · 🔴 lourd (1 Go de RAM ou plus).
 | `quay.io/soketi/soketi` | WebSockets compatibles Pusher (Laravel Echo) | 🟢 |
 | `dunglas/mercure` | Serveur temps réel en SSE (Symfony, Nuxt) | 🟢 |
 | `composer/satis` | Dépôt Composer privé pour les paquets PHP internes | 🟢 |
-| `wiremock/wiremock` | Simulation d'API externes | 🟢 |
 
 ### Outils de dev et collaboration
 
 | Image | Utilité | Poids |
 |---|---|---|
 | `ghcr.io/gchq/cyberchef` | Encodages, décodages et transformations en chaîne | 🟢 |
-| `hoppscotch/hoppscotch` | Client d'API façon Postman, auto-hébergé | 🟡 |
 | `swaggerapi/swagger-ui` | Documentation interactive des API OpenAPI | 🟢 |
 | `excalidraw/excalidraw` / `jgraph/drawio` | Schémas d'architecture qui restent en local | 🟢 |
 | `gitea/gitea` + `gitea/act_runner` | Git et CI locaux, façon GitHub Actions | 🟡 |
@@ -118,7 +126,7 @@ Poids : 🟢 léger · 🟡 moyen · 🔴 lourd (1 Go de RAM ou plus).
 
 | Image | Utilité | Poids |
 |---|---|---|
-| `sonatype/nexus3` | Cache tout-en-un (Docker, npm, Composer, Maven). Remplace `registry:2` et Verdaccio | 🔴 |
+| `sonatype/nexus3` | Cache tout-en-un (Docker, npm, Composer, Maven). Remplacerait `registry-cache` et Verdaccio | 🔴 |
 | `sonarqube:community` | Analyse de qualité du code PHP et JS/TS | 🔴 |
 
 ## Pour l'ajout d'un service
@@ -127,6 +135,7 @@ Suivre les conventions du compose :
 
 - réseau `bme_network` ;
 - labels Traefik `Host(\`${SUBDOMAIN}-<nom>.${DOMAIN}\`)` ;
+- label `dashboard.category=stack` (infrastructure) ou `dashboard.category=tools` (outil avec interface), pour son classement dans le dashboard ;
 - labels `glance.*` ;
 - labels `wud.watch=true`, plus `wud.tag.include` (tag de version) ou `wud.watch.digest=true` (tag `latest`) ;
 - `make sync-hosts` pour ajouter le domaine au fichier hosts de Windows.

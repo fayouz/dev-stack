@@ -1,0 +1,12 @@
+{
+  "name": "Accueil : / redirige vers l'administration (priorité faible, surchargeable)",
+  "priority": 10,
+  "request": {
+    "method": "GET",
+    "url": "/"
+  },
+  "response": {
+    "status": 302,
+    "headers": { "Location": "/__admin/swagger-ui/" }
+  }
+}

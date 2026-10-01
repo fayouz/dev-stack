@@ -8,6 +8,17 @@ function publicUrl(labels: Record<string, string>) {
   return null
 }
 
+// Services de la stack : catégorie lue dans le label `dashboard.category` (stack ou tools).
+// Tout conteneur d'un autre projet Compose est une application en développement ;
+// sans projet Compose (helpers d'IDE, conteneurs ponctuels), il est rangé dans « autres ».
+const CATEGORY_ORDER = ['stack', 'tools', 'app', 'other']
+function category(labels: Record<string, string>, stackProject: string) {
+  const project = labels['com.docker.compose.project']
+  if (!project) return 'other'
+  if (project !== stackProject) return 'app'
+  return labels['dashboard.category'] === 'tools' ? 'tools' : 'stack'
+}
+
 function health(status: string) {
   if (status.includes('(healthy)')) return 'healthy'
   if (status.includes('(unhealthy)')) return 'unhealthy'
@@ -25,6 +36,7 @@ export default defineEventHandler(async () => {
   if (containers.status === 'rejected') {
     throw createError({ statusCode: 502, statusMessage: `API Docker injoignable : ${containers.reason}` })
   }
+  const stackProject = useRuntimeConfig().public.defaultProject
   const cpuByName = cpu.status === 'fulfilled' ? cpu.value : {}
   const memoryByName = memory.status === 'fulfilled' ? memory.value : {}
 
@@ -37,6 +49,7 @@ export default defineEventHandler(async () => {
         return {
           name,
           project: container.Labels['com.docker.compose.project'] ?? null,
+          category: category(container.Labels, stackProject) as 'stack' | 'tools' | 'app' | 'other',
           image: container.Image,
           state: container.State,
           health: health(container.Status),
@@ -47,6 +60,8 @@ export default defineEventHandler(async () => {
           stopProtected: STOP_PROTECTED.includes(name),
         }
       })
-      .sort((a, b) => (a.project ?? '~').localeCompare(b.project ?? '~') || a.name.localeCompare(b.name)),
+      .sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+        || (a.project ?? '~').localeCompare(b.project ?? '~')
+        || a.name.localeCompare(b.name)),
   }
 })
