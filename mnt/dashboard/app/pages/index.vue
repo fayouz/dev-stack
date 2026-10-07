@@ -45,7 +45,7 @@ const tiles = computed(() => MAIN_CATEGORIES.map((key) => {
 }))
 // Stack et outils : doivent toujours tourner. Les applications s'arrêtent souvent volontairement.
 const platform = computed(() => all.value.filter(c => c.category === 'stack' || c.category === 'tools'))
-const problems = computed(() => platform.value.filter(c => c.state !== 'running' || c.health === 'unhealthy'))
+const problems = computed(() => platform.value.filter(c => !(c.onDemand && c.state !== 'running') && (c.state !== 'running' || c.health === 'unhealthy')))
 
 const lastBackup = computed(() => backups.value?.available ? backups.value.lastRun : null)
 

@@ -19,7 +19,7 @@ BLUE = \033[0;34m
 NC = \033[0m # No Color
 
 .PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
-	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-hoppscotch-sync logs-prometheus logs-grafana logs-restic update-one \
+	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-hoppscotch-sync dozzle dozzle-stop logs-prometheus logs-grafana logs-restic update-one \
 	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init dockge-sync
 
 # Commande par défaut
@@ -110,6 +110,12 @@ logs-registry: ## Affiche les logs du cache d'images Docker Hub
 
 logs-hoppscotch-sync: ## Affiche les logs de la synchro .http -> Hoppscotch
 	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f hoppscotch-sync
+
+dozzle: ## Démarre Dozzle (à la demande : coûteux en CPU tant qu'il tourne)
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) --profile on-demand up -d dozzle
+
+dozzle-stop: ## Arrête Dozzle
+	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) --profile on-demand stop dozzle
 
 logs-prometheus: ## Affiche les logs de Prometheus uniquement
 	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f prometheus

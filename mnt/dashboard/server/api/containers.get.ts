@@ -50,6 +50,8 @@ export default defineEventHandler(async () => {
           name,
           project: container.Labels['com.docker.compose.project'] ?? null,
           category: category(container.Labels, stackProject) as 'stack' | 'tools' | 'app' | 'other',
+          // Service lancé seulement quand on en a besoin : arrêté n'est pas un problème
+          onDemand: container.Labels['dashboard.on-demand'] === 'true',
           image: container.Image,
           state: container.State,
           health: health(container.Status),

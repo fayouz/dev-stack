@@ -9,7 +9,7 @@ const all = computed(() => containers.value?.containers ?? [])
 
 // Problèmes de la stack et des outils ; les applications s'arrêtent souvent volontairement
 const problemCount = computed(() => all.value
-  .filter(c => (c.category === 'stack' || c.category === 'tools') && (c.state !== 'running' || c.health === 'unhealthy'))
+  .filter(c => (c.category === 'stack' || c.category === 'tools') && !(c.onDemand && c.state !== 'running') && (c.state !== 'running' || c.health === 'unhealthy'))
   .length)
 
 const navigation = computed<NavigationMenuItem[]>(() => [

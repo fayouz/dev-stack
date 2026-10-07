@@ -68,7 +68,7 @@ function stateBadge(service: Service) {
   if (service.state === 'restarting') return { label: 'redémarre', color: 'warning' as const }
   if (service.state === 'paused') return { label: 'en pause', color: 'warning' as const }
   if (service.state === 'dead') return { label: 'mort', color: 'error' as const }
-  return { label: 'arrêté', color: 'neutral' as const }
+  return { label: service.onDemand ? 'à la demande' : 'arrêté', color: 'neutral' as const }
 }
 
 const ACTION_LABELS: Record<Action, { verb: string, done: string }> = {

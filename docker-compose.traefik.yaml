@@ -316,19 +316,26 @@ services:
     networks:
       - bme_network
 
+  # À la demande : Dozzle diffuse en continu les statistiques de tous les
+  # conteneurs (~20 % de CPU pour dockerd et autant pour containerd), sans
+  # option pour le couper. Hors du démarrage automatique (profil on-demand) :
+  # à lancer depuis la page Services du dashboard, ou `make dozzle`.
   dozzle:
     image: amir20/dozzle:latest
     container_name: dozzle
-    restart: unless-stopped
+    restart: "no"
+    profiles: ["on-demand"]
 
     environment:
       - DOCKER_HOST=tcp://docker-socket-proxy:2375
+      - DOZZLE_NO_ANALYTICS=true
 
     depends_on:
       - docker-socket-proxy
 
     labels:
       - "dashboard.category=tools"
+      - "dashboard.on-demand=true"
 
       - "traefik.enable=true"
       - "traefik.http.routers.dozzle.rule=Host(`${SUBDOMAIN}-dozzle.${DOMAIN}`)"
