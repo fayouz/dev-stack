@@ -46,6 +46,7 @@ const TOOL_ICONS: Record<string, string> = {
   hoppscotch: 'i-lucide-send',
   wiremock: 'i-lucide-drama',
   healthchecks: 'i-lucide-heart-pulse',
+  dockge: 'i-lucide-square-stack',
 }
 const links = (category: Category) => all.value
   .filter(c => c.category === category && c.url && c.name !== 'dashboard')

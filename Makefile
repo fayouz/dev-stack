@@ -20,7 +20,7 @@ NC = \033[0m # No Color
 
 .PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
 	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-prometheus logs-grafana logs-restic update-one \
-	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init
+	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init dockge-sync
 
 # Commande par défaut
 help: ## Affiche cette aide
@@ -293,6 +293,9 @@ healthchecks-init: ## Crée ou met à jour les contrôles Healthchecks de la sta
 	if grep -q '^HEALTHCHECKS_PING_KEY=' .env; then sed -i "s/^HEALTHCHECKS_PING_KEY=.*/HEALTHCHECKS_PING_KEY=$$key/" .env; \
 	else printf 'HEALTHCHECKS_PING_KEY=%s\n' "$$key" >> .env; fi; \
 	echo "$(GREEN)Clé de ping enregistrée dans .env. Recréer restic pour l'utiliser : docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) up -d restic$(NC)"
+
+dockge-sync: ## Expose les projets de PROJECTS_DIR à Dockge (liens en minuscules, idempotent)
+	@PROJECTS_DIR="$(call env_value,PROJECTS_DIR)" ./scripts/dockge_sync_stacks.sh
 
 registry-mirror: ## Branche le daemon Docker sur le cache d'images (sudo, sans redémarrage)
 	@sudo ./scripts/enable_registry_mirror.sh

@@ -22,6 +22,8 @@ Contexte à garder en tête :
 
 - [x] **Healthchecks** (`healthchecks/healthchecks:v4.4`) : surveille la sauvegarde et la vérification Restic, avec alertes dans Mailpit. Interface derrière le login unique ; `/ping` et `/api` ouverts. Contrôles créés par `make healthchecks-init`.
 
+- [x] **Dockge** (`louislam/dockge:1.5.0`) : gestion des projets Compose de `PROJECTS_DIR` (éditer, démarrer, arrêter, mettre à jour). Il voit les projets via des liens en minuscules dans `mnt/dockge/stacks` : relancer `make dockge-sync` après avoir ajouté un projet. Derrière le login unique et son propre compte. Pas d'autocomplétion ni d'IA : à revoir avec code-server si besoin.
+
 ## À régler en priorité
 
 - [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.

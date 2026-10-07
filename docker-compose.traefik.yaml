@@ -857,6 +857,45 @@ services:
     networks:
       - bme_network
 
+  # Gestion des projets Compose (éditer, démarrer, arrêter, mettre à jour).
+  # Il voit les projets de PROJECTS_DIR via les liens de mnt/dockge/stacks
+  # (make dockge-sync) : Dockge n'accepte que des noms en minuscules.
+  # PROJECTS_DIR est monté au même chemin que sur l'hôte, pour que les chemins
+  # relatifs des compose restent valides. Accès complet à Docker et écriture sur
+  # tous les projets : derrière le login unique en plus de son propre compte.
+  dockge:
+    image: louislam/dockge:1.5.0
+    container_name: dockge
+    restart: unless-stopped
+
+    environment:
+      - DOCKGE_STACKS_DIR=${PROJECTS_DIR}/docker-master/mnt/dockge/stacks
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./mnt/dockge/data:/app/data
+      - ${PROJECTS_DIR}:${PROJECTS_DIR}
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.dockge.rule=Host(`${SUBDOMAIN}-dockge.${DOMAIN}`)"
+      - "traefik.http.routers.dockge.middlewares=tinyauth"
+      - "traefik.http.services.dockge.loadbalancer.server.port=5001"
+
+      - "glance.name=Dockge"
+      - "glance.icon=si:docker"
+      - "glance.url=http://${SUBDOMAIN}-dockge.${DOMAIN}"
+      - "glance.description=Compose Stacks"
+      - "glance.id=dockge"
+
+      - "wud.watch=true"
+      - "wud.tag.include=^1\\.\\d+\\.\\d+$$"
+
+    networks:
+      - bme_network
+
   # Dashboard Nuxt de la stack : état des services (lecture seule), actions
   # start/stop/restart via le proxy dédié, métriques, mises à jour WUD, sauvegardes.
   # Protégé par le login unique (tinyauth).

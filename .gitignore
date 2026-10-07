@@ -8,6 +8,8 @@ mnt/restic/repo/
 mnt/restic/dumps/
 mnt/restic/status/
 mnt/wud/store/
+# Liens vers les projets locaux, propres à chaque machine (make dockge-sync)
+mnt/dockge/stacks/
 mnt/organizr/config/
 node_modules/
 
