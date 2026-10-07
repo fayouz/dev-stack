@@ -10,6 +10,8 @@ mnt/restic/status/
 mnt/wud/store/
 # Liens vers les projets locaux, propres à chaque machine (make dockge-sync)
 mnt/dockge/stacks/
+# Session Hoppscotch et empreintes de synchro
+mnt/hoppscotch-sync/state/
 mnt/organizr/config/
 node_modules/
 

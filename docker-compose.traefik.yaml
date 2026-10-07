@@ -689,6 +689,39 @@ services:
     networks:
       - bme_network
 
+  # Synchronisation continue des fichiers .http JetBrains des projets vers
+  # Hoppscotch (sens unique : les fichiers font foi). Projets montés en lecture
+  # seule ; session Hoppscotch de HOPP_EMAIL ouverte par lien magique lu dans
+  # Mailpit. Ne touche qu'aux collections et environnements qu'il a créés.
+  hoppscotch-sync:
+    build: ./mnt/hoppscotch-sync
+    image: docker-master/hoppscotch-sync:local
+    container_name: hoppscotch-sync
+    restart: unless-stopped
+
+    environment:
+      - PROJECTS_DIR=/projects
+      - HOPP_BACKEND=http://hoppscotch:80/backend
+      - HOPP_EMAIL=admin@${DOMAIN}
+      - MAILPIT_URL=http://mailer:8025
+      - STATE_DIR=/state
+      - EXCLUDE_PROJECTS=docker-master
+      - TZ=Europe/Paris
+
+    volumes:
+      - ${PROJECTS_DIR}:/projects:ro
+      - ./mnt/hoppscotch-sync/state:/state
+
+    depends_on:
+      - hoppscotch
+      - mailer
+
+    labels:
+      - "dashboard.category=stack"
+
+    networks:
+      - bme_network
+
   hoppscotch-db:
     image: postgres:16-alpine
     container_name: hoppscotch-db

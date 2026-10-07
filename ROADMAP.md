@@ -24,6 +24,8 @@ Contexte à garder en tête :
 
 - [x] **Dockge** (`louislam/dockge:1.5.0`) : gestion des projets Compose de `PROJECTS_DIR` (éditer, démarrer, arrêter, mettre à jour). Il voit les projets via des liens en minuscules dans `mnt/dockge/stacks` : relancer `make dockge-sync` après avoir ajouté un projet. Derrière le login unique et son propre compte. Pas d'autocomplétion ni d'IA : à revoir avec code-server si besoin.
 
+- [x] **Synchro `.http` → Hoppscotch** (`hoppscotch-sync`) : chaque projet de `PROJECTS_DIR` qui a des fichiers HTTP JetBrains a son workspace Hoppscotch (une équipe), avec ses répertoires en collections et ses environnements, mis à jour quelques secondes après chaque enregistrement. Un projet supprimé vide son workspace sans le supprimer. Sens unique : les fichiers font foi, et les modifications faites dans Hoppscotch sont écrasées. Voir `make logs-hoppscotch-sync`.
+
 ## À régler en priorité
 
 - [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.
