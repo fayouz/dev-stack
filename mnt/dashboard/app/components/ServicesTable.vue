@@ -129,6 +129,7 @@ async function confirmAction() {
       />
     </template>
 
+    <StaleNotice class="m-4" />
     <UAlert
       v-if="error"
       icon="i-lucide-triangle-alert"

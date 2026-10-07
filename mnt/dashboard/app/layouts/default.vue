@@ -106,15 +106,15 @@ const searchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [
   { id: 'links', label: 'Ouvrir un outil', items: [...toolLinks.value, ...stackLinks.value] },
 ])
 
-// Services et hôte toutes les 5 s, mises à jour et sauvegardes toutes les minutes
+// Services et hôte toutes les 10 s, mises à jour et sauvegardes toutes les minutes
 let tick = 0
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   timer = setInterval(async () => {
     tick++
-    await refreshNuxtData(tick % 12 === 0 ? ALL_REFRESH : FAST_REFRESH)
+    await refreshNuxtData(tick % 6 === 0 ? ALL_REFRESH : FAST_REFRESH)
     lastRefresh.value = new Date()
-  }, 5_000)
+  }, FAST_REFRESH_MS)
 })
 onBeforeUnmount(() => clearInterval(timer))
 </script>

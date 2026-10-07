@@ -125,6 +125,8 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
     </template>
 
     <template #body>
+      <StaleNotice />
+
       <!-- Indicateurs -->
       <div class="grid grid-cols-2 gap-4 md:grid-cols-3 2xl:grid-cols-6">
         <StatTile

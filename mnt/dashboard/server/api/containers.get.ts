@@ -42,6 +42,7 @@ export default defineEventHandler(async () => {
 
   return {
     metricsAvailable: cpu.status === 'fulfilled',
+    listedAt: containersListedAt(),
     containers: containers.value
       .map((container) => {
         const name = containerName(container)
