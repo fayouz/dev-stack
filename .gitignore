@@ -17,3 +17,10 @@ node_modules/
 
 # Sauvegarde du compose créée par WUD avant chaque mise à jour
 *.back
+
+# Fichiers personnels d'IDE et d'agents IA
+.ai/
+.junie/
+.idea/deployment.xml
+.idea/dictionaries/
+.idea/jsonSchemas.xml
