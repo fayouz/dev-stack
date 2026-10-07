@@ -407,10 +407,16 @@ services:
     restart: unless-stopped
     privileged: true
     mem_limit: 256m
+    # Plafond CPU : sans lui, cAdvisor a déjà saturé 4 cœurs sur 6 sous WSL
+    cpus: 1.0
 
     command:
       - "--docker_only=true"
       - "--housekeeping_interval=30s"
+      - "--max_housekeeping_interval=60s"
+      # Seuls CPU, mémoire et réseau servent (dashboard, Grafana). Le calcul de
+      # l'espace disque des conteneurs (du sur chaque couche) est ruineux sous WSL.
+      - "--disable_metrics=advtcp,cpu_topology,cpuset,disk,diskIO,hugetlb,memory_numa,oom_event,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp"
       - "--store_container_labels=false"
       - "--whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service"
 

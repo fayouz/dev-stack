@@ -16,7 +16,8 @@ export function listContainers() {
   return $fetch<DockerContainer[]>('/containers/json', {
     baseURL: dockerHost,
     query: { all: 'true' },
-    timeout: 5000,
+    // Large : au démarrage de toutes les stacks, l'API Docker peut mettre plusieurs secondes
+    timeout: 15_000,
   })
 }
 
