@@ -40,6 +40,10 @@ Contexte à garder en tête :
 
 - [x] **Oracle mis en pause** : hors du démarrage automatique (profil `on-demand`), en attendant la décision.
 
+- [x] **HTTPS pour la dev-stack** (`*.dev.localhost`) : autorité locale restreinte à ce domaine (`make certs`), installée dans Windows et WSL. Redirection automatique depuis HTTP ; les autres projets (`*.localhost`) restent en HTTP.
+
+- [x] **SSO via tinyauth (OIDC) pour Portainer et WUD** : connexion automatique avec la session du login unique. Portainer retombe sur son compte `admin` (pas de création automatique de comptes) ; WUD donne le rôle admin à l'utilisateur tinyauth `admin`. Les logins locaux restent en secours. La configuration OAuth de Portainer est dans sa base : à refaire dans *Settings > Authentication* si ses données sont réinitialisées. Hoppscotch et Dockge gardent les identifiants alignés (pas d'OIDC générique).
+
 ## À régler en priorité
 
 - [ ] **Pousser la branche** `feat/stack-hardening-dashboard` (8 commits, rien n'est encore sur GitHub), puis la fusionner dans `main`.
@@ -52,7 +56,6 @@ Contexte à garder en tête :
 - [ ] **Enregistrer le mot de passe du login unique** (tinyauth) dans un gestionnaire de mots de passe. `.env` n'en contient que le hash.
 - [ ] **Enregistrer `RESTIC_PASSWORD`** dans un gestionnaire de mots de passe. Sans lui, les sauvegardes sont irrécupérables.
 - [ ] **Hoppscotch** : se connecter une fois sur `/admin` pour devenir administrateur de l'instance (le compte `admin@dev.localhost` ne l'est pas encore).
-- [ ] **Vrai SSO pour Portainer et WUD** : tinyauth v5 peut servir de fournisseur OIDC, mais exige le HTTPS. Passer la stack en HTTPS avec une autorité de certification locale (mkcert, à installer une fois sur Windows), puis déclarer Portainer et WUD comme clients OIDC. Hoppscotch (pas d'OIDC générique) et Dockge (aucun login externe) resteraient sur identifiants alignés.
 - [ ] **Compte Docker Hub pour WUD** (`WUD_REGISTRY_HUB_PUBLIC_LOGIN` / `WUD_REGISTRY_HUB_PUBLIC_PASSWORD`). WUD interroge Docker Hub directement pour lister les versions, et le cache d'images ne l'aide pas.
 
 ## Améliorations de l'existant

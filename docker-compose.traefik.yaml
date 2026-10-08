@@ -128,8 +128,11 @@ services:
       - "wud.tag.include=^v3\\.\\d+$$"
 
     networks:
-      - bme_network
-      - socket_proxy
+      bme_network:
+        # Les conteneurs (Portainer, WUD) joignent l'émetteur OIDC par son nom public
+        aliases:
+          - ${SUBDOMAIN}-auth.${DOMAIN}
+      socket_proxy: {}
 
   # Portainer garde le socket direct : il a besoin de l'API en écriture
   # (POST, exec, volumes...), un proxy n'apporterait aucune restriction.
@@ -138,9 +141,14 @@ services:
     container_name: portainer
     restart: unless-stopped
 
+    environment:
+      # Autorités système + autorité locale, pour joindre tinyauth (OAuth) en HTTPS
+      - SSL_CERT_DIR=/etc/ssl/certs:/certs-ca
+
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mnt/portainer/data:/data
+      - ./mnt/certs/ca/ca.crt:/certs-ca/docker-master-ca.crt:ro
 
     labels:
       - "dashboard.category=tools"
@@ -404,6 +412,18 @@ services:
       - TZ=Europe/Paris
       - WUD_AUTH_ADMIN_USER=admin
       - WUD_AUTH_ADMIN_PASSWORD=${WUD_ADMIN_PASSWORD:-admin}
+      # Connexion via tinyauth (OIDC). Le compte local ci-dessus reste pour l'API (dashboard).
+      - WUD_PUBLIC_URL=https://${SUBDOMAIN}-wud.${DOMAIN}
+      - WUD_AUTH_OIDC_TINYAUTH_DISCOVERY=https://${SUBDOMAIN}-auth.${DOMAIN}/.well-known/openid-configuration
+      - WUD_AUTH_OIDC_TINYAUTH_CLIENTID=wud
+      - WUD_AUTH_OIDC_TINYAUTH_CLIENTSECRET=${TINYAUTH_OIDC_WUD_SECRET}
+      - WUD_AUTH_OIDC_TINYAUTH_REDIRECT=true
+      # Rôle admin pour l'utilisateur tinyauth "admin" (les comptes locaux de tinyauth
+      # n'ont pas de groupes : le nom d'utilisateur sert de groupe) ; les autres sont refusés
+      - WUD_AUTH_OIDC_TINYAUTH_GROUPSCLAIM=preferred_username
+      - WUD_AUTH_OIDC_TINYAUTH_ADMINGROUP=admin
+      - WUD_AUTH_OIDC_TINYAUTH_DEFAULTROLE=none
+      - NODE_EXTRA_CA_CERTS=/certs-ca/ca.crt
       - WUD_WATCHER_LOCAL_WATCHBYDEFAULT=false
       - WUD_WATCHER_LOCAL_CRON=${WUD_CRON:-0 12 * * *}
       - WUD_TRIGGER_SMTP_MAILPIT_HOST=mailer
@@ -419,6 +439,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mnt/wud/store:/store
+      # Autorité locale (certificat public seulement) pour joindre tinyauth en HTTPS
+      - ./mnt/certs/ca/ca.crt:/certs-ca/ca.crt:ro
       - .:/project
 
     depends_on:
@@ -653,6 +675,17 @@ services:
       - TINYAUTH_UI_WARNINGSENABLED=false
       - TINYAUTH_AUTH_TRUSTEDPROXIES=172.25.0.0/24
       - TINYAUTH_AUTH_SECURECOOKIE=true
+      # Fournisseur OIDC : connexion automatique de Portainer et WUD (HTTPS requis)
+      - TINYAUTH_OIDC_PRIVATEKEYPATH=/data/oidc_key
+      - TINYAUTH_OIDC_PUBLICKEYPATH=/data/oidc_key.pub
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_CLIENTID=portainer
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_CLIENTSECRET=${TINYAUTH_OIDC_PORTAINER_SECRET}
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_TRUSTEDREDIRECTURIS=https://${SUBDOMAIN}-portainer.${DOMAIN}
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_NAME=Portainer
+      - TINYAUTH_OIDC_CLIENTS_WUD_CLIENTID=wud
+      - TINYAUTH_OIDC_CLIENTS_WUD_CLIENTSECRET=${TINYAUTH_OIDC_WUD_SECRET}
+      - TINYAUTH_OIDC_CLIENTS_WUD_TRUSTEDREDIRECTURIS=https://${SUBDOMAIN}-wud.${DOMAIN}/auth/oidc/tinyauth/cb
+      - TINYAUTH_OIDC_CLIENTS_WUD_NAME=WUD
 
     volumes:
       - ./mnt/tinyauth/data:/data
