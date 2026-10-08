@@ -198,9 +198,14 @@ services:
     networks:
       - bme_network
 
+  # EN PAUSE : base corrompue (ORA-01578 dans system01.dbf), copie du volume dans
+  # docker-master_oracle_data_copie_20260929. Hors du démarrage automatique
+  # (profil on-demand) en attendant la décision : réparer ou recréer à vide.
   oracle:
     image: gvenzl/oracle-xe:21-slim
     container_name: oracle
+    restart: "no"
+    profiles: ["on-demand"]
     # Oracle a besoin de plus que les 10 s par défaut pour s'arrêter proprement
     stop_grace_period: 2m
 
@@ -218,6 +223,7 @@ services:
 
     labels:
       - "dashboard.category=stack"
+      - "dashboard.on-demand=true"
 
       - "glance.name=Oracle XE"
       - "glance.icon=si:oracle"
@@ -759,6 +765,9 @@ services:
       - "dashboard.category=stack"
 
       - "wud.watch=true"
+      # Même tag uniquement : un saut de version majeure de Postgres (16 -> 18)
+      # ne lit pas les données existantes sans migration
+      - "wud.tag.include=^16-alpine$$"
       - "wud.watch.digest=true"
 
     networks:
