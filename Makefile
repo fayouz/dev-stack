@@ -47,7 +47,7 @@ help: ## Affiche cette aide
 
 start: ## Démarre la stack sur le réseau STACK_NETWORK du .env (bme_network par défaut : profil BME)
 ifeq ($(STACK_NETWORK),$(BME_NETWORK))
-	@echo "$(YELLOW)STACK_NETWORK=$(BME_NETWORK) dans .env : c'est le profil BME, à lancer avec 'make start-bme' (enchaîné automatiquement).$(NC)"
+	@echo "$(YELLOW)STACK_NETWORK=$(BME_NETWORK) (.env ou défaut) : c'est le profil BME, à lancer avec 'make start-bme' (enchaîné automatiquement).$(NC)"
 	@$(MAKE) --no-print-directory start-bme
 else
 	@$(MAKE) --no-print-directory network
