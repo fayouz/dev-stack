@@ -46,7 +46,6 @@ Contexte à garder en tête :
 
 ## À régler en priorité
 
-- [ ] **Pousser la branche** `feat/stack-hardening-dashboard` (8 commits, rien n'est encore sur GitHub), puis la fusionner dans `main`.
 - [ ] **MariaDB 12 → 13** (majeure) : à faire volontairement, après une sauvegarde fraîche, pas depuis WUD. (Postgres 16 → 18 de `hoppscotch-db` est désormais bloqué dans WUD.)
 - [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`, **en pause**) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.
   - Une copie du volume en l'état existe : `docker-master_oracle_data_copie_20260929`.
