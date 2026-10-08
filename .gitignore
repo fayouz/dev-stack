@@ -12,6 +12,8 @@ mnt/wud/store/
 mnt/dockge/stacks/
 # Session Hoppscotch et empreintes de synchro
 mnt/hoppscotch-sync/state/
+# Autorité locale et certificat HTTPS (clés privées, propres à chaque machine)
+mnt/certs/
 mnt/organizr/config/
 node_modules/
 

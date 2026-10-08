@@ -76,6 +76,9 @@ services:
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.entrypoint=metrics"
 
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+
     ports:
       - "80:80"
       - "443:443"
@@ -85,6 +88,9 @@ services:
 
     volumes:
       - ./letsencrypt:/letsencrypt
+      - ./mnt/traefik/dynamic:/etc/traefik/dynamic:ro
+      # Seulement le certificat serveur : la clé de l'autorité reste dans mnt/certs/ca
+      - ./mnt/certs/server:/certs:ro
 
     depends_on:
       - docker-socket-proxy
@@ -94,16 +100,27 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.traefik.rule=Host(`local-traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls=true"
       - "traefik.http.routers.traefik.service=api@internal"
       - "traefik.http.routers.traefik.middlewares=tinyauth"
       # Défini ici (et non sur tinyauth) pour exister même quand tinyauth redémarre :
       # l'accès reste alors fermé au lieu de casser les routeurs
       - "traefik.http.middlewares.tinyauth.forwardauth.address=http://tinyauth:3000/api/auth/traefik"
       - "traefik.http.middlewares.tinyauth.forwardauth.authResponseHeaders=Remote-User,Remote-Email,Remote-Name,Remote-Groups"
+      # HTTPS pour la dev-stack uniquement (*.${DOMAIN}) : les autres projets
+      # (*.localhost) gardent leur HTTP. Redirection temporaire (302) : rien n'est
+      # mémorisé par le navigateur, on peut revenir en arrière sans effet de bord.
+      - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.dev-stack-to-https.rule=HostRegexp(`^.+\\.${DOMAIN}$$`)"
+      - "traefik.http.routers.dev-stack-to-https.entrypoints=web"
+      - "traefik.http.routers.dev-stack-to-https.priority=1"
+      - "traefik.http.routers.dev-stack-to-https.middlewares=to-https"
+      - "traefik.http.routers.dev-stack-to-https.service=noop@internal"
 
       - "glance.name=Traefik"
       - "glance.icon=si:traefikproxy"
-      - "glance.url=http://local-traefik.${DOMAIN}"
+      - "glance.url=https://local-traefik.${DOMAIN}"
       - "glance.description=Reverse Proxy"
       - "glance.id=traefik"
 
@@ -130,11 +147,13 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`${SUBDOMAIN}-portainer.${DOMAIN}`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls=true"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
       - "glance.name=Portainer"
       - "glance.icon=si:portainer"
-      - "glance.url=http://${SUBDOMAIN}-portainer.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-portainer.${DOMAIN}"
       - "glance.description=Container Management"
       - "glance.id=portainer"
 
@@ -153,12 +172,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.adminer.rule=Host(`${SUBDOMAIN}-adminer.${DOMAIN}`)"
+      - "traefik.http.routers.adminer.entrypoints=websecure"
+      - "traefik.http.routers.adminer.tls=true"
       - "traefik.http.routers.adminer.middlewares=tinyauth"
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
 
       - "glance.name=Adminer"
       - "glance.icon=si:adminer"
-      - "glance.url=http://${SUBDOMAIN}-adminer.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-adminer.${DOMAIN}"
       - "glance.description=Database Client"
       - "glance.id=adminer"
 
@@ -249,12 +270,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.mailer.rule=Host(`${SUBDOMAIN}-mailer.${DOMAIN}`)"
+      - "traefik.http.routers.mailer.entrypoints=websecure"
+      - "traefik.http.routers.mailer.tls=true"
       - "traefik.http.routers.mailer.middlewares=tinyauth"
       - "traefik.http.services.mailer.loadbalancer.server.port=8025"
 
       - "glance.name=Mailpit"
       - "glance.icon=si:mailtrap"
-      - "glance.url=http://${SUBDOMAIN}-mailer.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-mailer.${DOMAIN}"
       - "glance.description=Mail Catcher"
       - "glance.id=mailpit"
 
@@ -283,6 +306,8 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
+      - "traefik.http.routers.glance.entrypoints=websecure"
+      - "traefik.http.routers.glance.tls=true"
       - "traefik.http.routers.glance.middlewares=tinyauth"
       - "traefik.http.services.glance.loadbalancer.server.port=8080"
 
@@ -314,6 +339,8 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
+      - "traefik.http.routers.organizr.entrypoints=websecure"
+      - "traefik.http.routers.organizr.tls=true"
       - "traefik.http.services.organizr.loadbalancer.server.port=80"
 
       - "wud.watch=true"
@@ -345,12 +372,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.dozzle.rule=Host(`${SUBDOMAIN}-dozzle.${DOMAIN}`)"
+      - "traefik.http.routers.dozzle.entrypoints=websecure"
+      - "traefik.http.routers.dozzle.tls=true"
       - "traefik.http.routers.dozzle.middlewares=tinyauth"
       - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
 
       - "glance.name=Dozzle"
       - "glance.icon=si:docker"
-      - "glance.url=http://${SUBDOMAIN}-dozzle.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-dozzle.${DOMAIN}"
       - "glance.description=Docker Logs"
       - "glance.id=dozzle"
 
@@ -400,11 +429,13 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.wud.rule=Host(`${SUBDOMAIN}-wud.${DOMAIN}`)"
+      - "traefik.http.routers.wud.entrypoints=websecure"
+      - "traefik.http.routers.wud.tls=true"
       - "traefik.http.services.wud.loadbalancer.server.port=3000"
 
       - "glance.name=WUD"
       - "glance.icon=si:docker"
-      - "glance.url=http://${SUBDOMAIN}-wud.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-wud.${DOMAIN}"
       - "glance.description=Image Updates"
       - "glance.id=wud"
 
@@ -500,12 +531,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.prometheus.rule=Host(`${SUBDOMAIN}-prometheus.${DOMAIN}`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls=true"
       - "traefik.http.routers.prometheus.middlewares=tinyauth"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
 
       - "glance.name=Prometheus"
       - "glance.icon=si:prometheus"
-      - "glance.url=http://${SUBDOMAIN}-prometheus.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-prometheus.${DOMAIN}"
       - "glance.description=Metrics"
       - "glance.id=prometheus"
 
@@ -523,7 +556,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_SERVER_ROOT_URL=http://${SUBDOMAIN}-grafana.${DOMAIN}
+      - GF_SERVER_ROOT_URL=https://${SUBDOMAIN}-grafana.${DOMAIN}
       - GF_ANALYTICS_REPORTING_ENABLED=false
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
       # Login unique : Grafana fait confiance à l'utilisateur transmis par tinyauth
@@ -545,12 +578,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.grafana.rule=Host(`${SUBDOMAIN}-grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls=true"
       - "traefik.http.routers.grafana.middlewares=tinyauth"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
 
       - "glance.name=Grafana"
       - "glance.icon=si:grafana"
-      - "glance.url=http://${SUBDOMAIN}-grafana.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-grafana.${DOMAIN}"
       - "glance.description=Dashboards"
       - "glance.id=grafana"
 
@@ -611,12 +646,13 @@ services:
     restart: unless-stopped
 
     environment:
-      - TINYAUTH_APPURL=http://${SUBDOMAIN}-auth.${DOMAIN}
+      - TINYAUTH_APPURL=https://${SUBDOMAIN}-auth.${DOMAIN}
       - TINYAUTH_AUTH_USERS=${TINYAUTH_USERS}
       - TINYAUTH_DATABASE_PATH=/data/tinyauth.db
       - TINYAUTH_UI_TITLE=Docker Master
       - TINYAUTH_UI_WARNINGSENABLED=false
       - TINYAUTH_AUTH_TRUSTEDPROXIES=172.25.0.0/24
+      - TINYAUTH_AUTH_SECURECOOKIE=true
 
     volumes:
       - ./mnt/tinyauth/data:/data
@@ -626,6 +662,8 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.tinyauth.rule=Host(`${SUBDOMAIN}-auth.${DOMAIN}`)"
+      - "traefik.http.routers.tinyauth.entrypoints=websecure"
+      - "traefik.http.routers.tinyauth.tls=true"
       - "traefik.http.services.tinyauth.loadbalancer.server.port=3000"
 
       - "wud.watch=true"
@@ -644,12 +682,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.it-tools.rule=Host(`${SUBDOMAIN}-it-tools.${DOMAIN}`)"
+      - "traefik.http.routers.it-tools.entrypoints=websecure"
+      - "traefik.http.routers.it-tools.tls=true"
       - "traefik.http.routers.it-tools.middlewares=tinyauth"
       - "traefik.http.services.it-tools.loadbalancer.server.port=80"
 
       - "glance.name=IT Tools"
       - "glance.icon=si:toolbox"
-      - "glance.url=http://${SUBDOMAIN}-it-tools.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-it-tools.${DOMAIN}"
       - "glance.description=Dev Utilities"
       - "glance.id=it-tools"
 
@@ -677,13 +717,13 @@ services:
       - DATA_ENCRYPTION_KEY=${HOPPSCOTCH_ENCRYPTION_KEY}
       - ENABLE_SUBPATH_BASED_ACCESS=true
       - TRUST_PROXY=true
-      - WHITELISTED_ORIGINS=http://${SUBDOMAIN}-hoppscotch.${DOMAIN},app://localhost_3200,app://hoppscotch
-      - VITE_BASE_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}
-      - VITE_SHORTCODE_BASE_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}
-      - VITE_ADMIN_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}/admin
-      - VITE_BACKEND_GQL_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/graphql
-      - VITE_BACKEND_WS_URL=ws://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/graphql
-      - VITE_BACKEND_API_URL=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/v1
+      - WHITELISTED_ORIGINS=https://${SUBDOMAIN}-hoppscotch.${DOMAIN},app://localhost_3200,app://hoppscotch
+      - VITE_BASE_URL=https://${SUBDOMAIN}-hoppscotch.${DOMAIN}
+      - VITE_SHORTCODE_BASE_URL=https://${SUBDOMAIN}-hoppscotch.${DOMAIN}
+      - VITE_ADMIN_URL=https://${SUBDOMAIN}-hoppscotch.${DOMAIN}/admin
+      - VITE_BACKEND_GQL_URL=https://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/graphql
+      - VITE_BACKEND_WS_URL=wss://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/graphql
+      - VITE_BACKEND_API_URL=https://${SUBDOMAIN}-hoppscotch.${DOMAIN}/backend/v1
 
     depends_on:
       hoppscotch-db:
@@ -694,11 +734,13 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.hoppscotch.rule=Host(`${SUBDOMAIN}-hoppscotch.${DOMAIN}`)"
+      - "traefik.http.routers.hoppscotch.entrypoints=websecure"
+      - "traefik.http.routers.hoppscotch.tls=true"
       - "traefik.http.services.hoppscotch.loadbalancer.server.port=80"
 
       - "glance.name=Hoppscotch"
       - "glance.icon=si:hoppscotch"
-      - "glance.url=http://${SUBDOMAIN}-hoppscotch.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-hoppscotch.${DOMAIN}"
       - "glance.description=API Client"
       - "glance.id=hoppscotch"
 
@@ -837,15 +879,19 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.wiremock.rule=Host(`${SUBDOMAIN}-wiremock.${DOMAIN}`)"
+      - "traefik.http.routers.wiremock.entrypoints=websecure"
+      - "traefik.http.routers.wiremock.tls=true"
       - "traefik.http.routers.wiremock.service=wiremock"
       - "traefik.http.routers.wiremock-admin.rule=Host(`${SUBDOMAIN}-wiremock.${DOMAIN}`) && PathPrefix(`/__admin`)"
+      - "traefik.http.routers.wiremock-admin.entrypoints=websecure"
+      - "traefik.http.routers.wiremock-admin.tls=true"
       - "traefik.http.routers.wiremock-admin.middlewares=tinyauth"
       - "traefik.http.routers.wiremock-admin.service=wiremock"
       - "traefik.http.services.wiremock.loadbalancer.server.port=8080"
 
       - "glance.name=WireMock"
       - "glance.icon=si:wiremock"
-      - "glance.url=http://${SUBDOMAIN}-wiremock.${DOMAIN}/__admin/swagger-ui/"
+      - "glance.url=https://${SUBDOMAIN}-wiremock.${DOMAIN}/__admin/swagger-ui/"
       - "glance.description=API Mocks"
       - "glance.id=wiremock"
 
@@ -867,7 +913,7 @@ services:
 
     environment:
       - SECRET_KEY=${HEALTHCHECKS_SECRET_KEY}
-      - SITE_ROOT=http://${SUBDOMAIN}-healthchecks.${DOMAIN}
+      - SITE_ROOT=https://${SUBDOMAIN}-healthchecks.${DOMAIN}
       - SITE_NAME=Docker Master Healthchecks
       - ALLOWED_HOSTS=${SUBDOMAIN}-healthchecks.${DOMAIN},healthchecks
       - DB=sqlite
@@ -881,6 +927,8 @@ services:
       - EMAIL_USE_SSL=False
       - EMAIL_USE_VERIFICATION=False
       - INTEGRATIONS_ALLOW_PRIVATE_IPS=True
+      # Derrière Traefik en HTTPS : sans cela, Django rejette les formulaires (CSRF)
+      - SECURE_PROXY_SSL_HEADER=HTTP_X_FORWARDED_PROTO,https
       - TZ=Europe/Paris
 
     volumes:
@@ -894,15 +942,19 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.healthchecks.rule=Host(`${SUBDOMAIN}-healthchecks.${DOMAIN}`)"
+      - "traefik.http.routers.healthchecks.entrypoints=websecure"
+      - "traefik.http.routers.healthchecks.tls=true"
       - "traefik.http.routers.healthchecks.middlewares=tinyauth"
       - "traefik.http.routers.healthchecks.service=healthchecks"
       - "traefik.http.routers.healthchecks-ping.rule=Host(`${SUBDOMAIN}-healthchecks.${DOMAIN}`) && (PathPrefix(`/ping/`) || PathPrefix(`/api/`))"
+      - "traefik.http.routers.healthchecks-ping.entrypoints=websecure"
+      - "traefik.http.routers.healthchecks-ping.tls=true"
       - "traefik.http.routers.healthchecks-ping.service=healthchecks"
       - "traefik.http.services.healthchecks.loadbalancer.server.port=8000"
 
       - "glance.name=Healthchecks"
       - "glance.icon=si:healthchecksdotio"
-      - "glance.url=http://${SUBDOMAIN}-healthchecks.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-healthchecks.${DOMAIN}"
       - "glance.description=Cron Monitoring"
       - "glance.id=healthchecks"
 
@@ -936,12 +988,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.dockge.rule=Host(`${SUBDOMAIN}-dockge.${DOMAIN}`)"
+      - "traefik.http.routers.dockge.entrypoints=websecure"
+      - "traefik.http.routers.dockge.tls=true"
       - "traefik.http.routers.dockge.middlewares=tinyauth"
       - "traefik.http.services.dockge.loadbalancer.server.port=5001"
 
       - "glance.name=Dockge"
       - "glance.icon=si:docker"
-      - "glance.url=http://${SUBDOMAIN}-dockge.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-dockge.${DOMAIN}"
       - "glance.description=Compose Stacks"
       - "glance.id=dockge"
 
@@ -963,7 +1017,7 @@ services:
     environment:
       - TZ=Europe/Paris
       - NUXT_WUD_PASSWORD=${WUD_ADMIN_PASSWORD:-admin}
-      - NUXT_PUBLIC_WUD_PUBLIC_URL=http://${SUBDOMAIN}-wud.${DOMAIN}
+      - NUXT_PUBLIC_WUD_PUBLIC_URL=https://${SUBDOMAIN}-wud.${DOMAIN}
 
     volumes:
       - ./mnt/restic/status:/status:ro
@@ -977,12 +1031,14 @@ services:
 
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`${SUBDOMAIN}-dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.middlewares=tinyauth"
       - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
 
       - "glance.name=Dashboard"
       - "glance.icon=si:nuxt"
-      - "glance.url=http://${SUBDOMAIN}-dashboard.${DOMAIN}"
+      - "glance.url=https://${SUBDOMAIN}-dashboard.${DOMAIN}"
       - "glance.description=Stack Dashboard"
       - "glance.id=dashboard"
 

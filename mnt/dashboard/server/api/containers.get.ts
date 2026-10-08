@@ -1,9 +1,11 @@
 function publicUrl(labels: Record<string, string>) {
   if (labels['glance.url']) return labels['glance.url']
   for (const [key, value] of Object.entries(labels)) {
-    if (!/^traefik\.http\.routers\.[^.]+\.rule$/.test(key)) continue
+    const router = key.match(/^traefik\.http\.routers\.([^.]+)\.rule$/)?.[1]
+    if (!router) continue
     const host = value.match(/Host\(`([^`]+)`\)/)?.[1]
-    if (host) return `http://${host}`
+    // HTTPS pour les routeurs en TLS (dev-stack), HTTP pour les autres projets
+    if (host) return `${labels[`traefik.http.routers.${router}.tls`] === 'true' ? 'https' : 'http'}://${host}`
   }
   return null
 }

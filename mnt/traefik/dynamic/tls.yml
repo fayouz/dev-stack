@@ -1,0 +1,7 @@
+# Certificat *.dev.localhost de la dev-stack (make certs). Traefik le choisit par
+# SNI ; il ne devient pas le certificat par défaut, pour ne pas changer celui des
+# autres projets en HTTPS (*.localhost).
+tls:
+  certificates:
+    - certFile: /certs/server.crt
+      keyFile: /certs/server.key

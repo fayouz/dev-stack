@@ -20,7 +20,7 @@ NC = \033[0m # No Color
 
 .PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
 	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-hoppscotch-sync dozzle dozzle-stop logs-prometheus logs-grafana logs-restic update-one \
-	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init dockge-sync
+	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init dockge-sync certs
 
 # Commande par défaut
 help: ## Affiche cette aide
@@ -147,7 +147,7 @@ ps-all: ## Affiche le statut de TOUS les conteneurs
 
 hosts: ## Liste les hôtes Traefik disponibles
 	@echo "$(GREEN)Hôtes Traefik disponibles:$(NC)"
-	@docker compose -f $(COMPOSE_FILE) config | grep -oP 'Host\(`\K[^`]+' | sort -u | awk '{print "  - http://" $$1}'
+	@docker compose -f $(COMPOSE_FILE) config | grep -oP 'Host\(`\K[^`]+' | sort -u | awk '{print "  - https://" $$1}'
 
 sync-hosts: ## Synchronise les hôtes Traefik avec le fichier hosts de Windows (Bash)
 	@echo "$(YELLOW)Synchronisation des hôtes (WSL)...$(NC)"
@@ -302,6 +302,9 @@ healthchecks-init: ## Crée ou met à jour les contrôles Healthchecks de la sta
 	if grep -q '^HEALTHCHECKS_PING_KEY=' .env; then sed -i "s/^HEALTHCHECKS_PING_KEY=.*/HEALTHCHECKS_PING_KEY=$$key/" .env; \
 	else printf 'HEALTHCHECKS_PING_KEY=%s\n' "$$key" >> .env; fi; \
 	echo "$(GREEN)Clé de ping enregistrée dans .env. Recréer restic pour l'utiliser : docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) up -d restic$(NC)"
+
+certs: ## Génère l'autorité locale et le certificat HTTPS *.DOMAIN de la dev-stack (idempotent)
+	@./scripts/make_certs.sh
 
 dockge-sync: ## Expose les projets de PROJECTS_DIR à Dockge (liens en minuscules, idempotent)
 	@PROJECTS_DIR="$(call env_value,PROJECTS_DIR)" ./scripts/dockge_sync_stacks.sh
