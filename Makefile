@@ -6,10 +6,26 @@ COMPOSE_FILE = docker-compose.traefik.yaml
 COMPOSE_FILE_AUX = docker-compose.yaml
 COMPOSE_FILE_PLUMO = docker-compose.plumo.yaml
 PROJECT_NAME = docker-master
+
+# Réseau partagé de la stack : STACK_NETWORK de l'environnement, sinon du .env,
+# sinon devstack (même ordre de priorité que Docker Compose)
+STACK_NETWORK ?= $(shell grep -s '^STACK_NETWORK=' .env | tail -1 | cut -d= -f2-)
+ifeq ($(strip $(STACK_NETWORK)),)
+STACK_NETWORK := devstack
+endif
+
+# Profil BME : réseaux à plages IP fixes (évite le conflit avec Oracle 172.18.20.60)
+# et profil Compose "bme" pour les services propres à l'entreprise
+BME_NETWORK = bme_network
+BME_NETWORK_AUX = bme_network_aux
 NETWORK_SUBNET = 172.25.0.0/24
 NETWORK_SUBNET_AUX = 172.25.1.0/24
 NETWORK_GATEWAY = 172.25.0.1
 NETWORK_GATEWAY_AUX = 172.25.1.1
+COMPOSE_PROFILE_FLAGS = $(if $(filter $(BME_NETWORK),$(STACK_NETWORK)),--profile bme)
+
+# Le nom du réseau est passé explicitement pour que Compose voie la même valeur que make
+COMPOSE = STACK_NETWORK=$(STACK_NETWORK) docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) $(COMPOSE_PROFILE_FLAGS)
 
 # Couleurs pour l'affichage
 GREEN = \033[0;32m
@@ -18,7 +34,7 @@ RED = \033[0;31m
 BLUE = \033[0;34m
 NC = \033[0m # No Color
 
-.PHONY: help up down restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
+.PHONY: help start start-bme _up stop up down network-bme restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
 	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-hoppscotch-sync dozzle dozzle-stop logs-prometheus logs-grafana logs-restic update-one \
 	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init dockge-sync certs
 
@@ -29,17 +45,42 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)Commandes disponibles:$(NC)"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-18s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-up: ## Démarre les services Traefik
-	@echo "$(GREEN)Démarrage des services Traefik...$(NC)"
-	docker compose -f $(COMPOSE_FILE)  -p $(PROJECT_NAME) up -d
+start: ## Démarre la stack, profil générique (réseau STACK_NETWORK du .env, devstack par défaut)
+ifeq ($(STACK_NETWORK),$(BME_NETWORK))
+	@echo "$(YELLOW)STACK_NETWORK=$(BME_NETWORK) dans .env : c'est le profil BME, à lancer avec 'make start-bme' (enchaîné automatiquement).$(NC)"
+	@$(MAKE) --no-print-directory start-bme
+else
+	@$(MAKE) --no-print-directory network
+	@$(MAKE) --no-print-directory _up
+endif
+
+start-bme: ## Démarre la stack, profil BME (STACK_NETWORK=bme_network dans .env, réseaux à IP fixes, profil Compose bme)
+	@if [ ! -f .env ]; then echo "$(RED)Fichier .env introuvable : le créer à partir de .env.dist.$(NC)"; exit 1; fi
+	@if grep -q '^STACK_NETWORK=$(BME_NETWORK)$$' .env; then \
+		echo "$(GREEN)Profil BME : STACK_NETWORK=$(BME_NETWORK) déjà défini dans .env.$(NC)"; \
+	elif grep -q '^STACK_NETWORK=' .env; then \
+		sed -i 's/^STACK_NETWORK=.*/STACK_NETWORK=$(BME_NETWORK)/' .env; \
+		echo "$(YELLOW)Profil BME : STACK_NETWORK passé à $(BME_NETWORK) dans .env (revenir au profil générique : modifier ou retirer cette ligne).$(NC)"; \
+	else \
+		printf '\n# Réseau partagé de la stack (profil BME : make start-bme)\nSTACK_NETWORK=%s\n' '$(BME_NETWORK)' >> .env; \
+		echo "$(YELLOW)Profil BME : STACK_NETWORK=$(BME_NETWORK) ajouté à .env (les autres commandes make l'utiliseront aussi).$(NC)"; \
+	fi
+	@$(MAKE) --no-print-directory network-bme
+	@$(MAKE) --no-print-directory _up STACK_NETWORK=$(BME_NETWORK)
+
+_up:
+	@echo "$(GREEN)Démarrage des services (réseau $(STACK_NETWORK)$(if $(COMPOSE_PROFILE_FLAGS), + profil bme))...$(NC)"
+	$(COMPOSE) up -d
 	@echo "$(GREEN)Services démarrés avec succès!$(NC)"
-	@$(MAKE) hosts
+	@$(MAKE) --no-print-directory hosts
+
+up: start ## Alias de start (profil choisi d'après STACK_NETWORK)
 
 up-all: network ## Démarre TOUS les services (Traefik + auxiliaires + Plumo)
 	@echo "$(GREEN)Démarrage de tous les services...$(NC)"
 	@echo ""
 	@echo "$(BLUE)▶️  Démarrage de Traefik...$(NC)"
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) up -d
+	$(COMPOSE) up -d
 	@sleep 2
 	@echo ""
 	@echo "$(BLUE)▶️  Démarrage des services auxiliaires...$(NC)"
@@ -55,14 +96,16 @@ up-all: network ## Démarre TOUS les services (Traefik + auxiliaires + Plumo)
 
 down: ## Arrête tous les services Traefik
 	@echo "$(RED)Arrêt des services Traefik...$(NC)"
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) down
+	$(COMPOSE) down
 	@echo "$(GREEN)Services arrêtés avec succès!$(NC)"
+
+stop: down ## Alias de down
 
 down-all: ## Arrête TOUS les services (Traefik + auxiliaires + Plumo)
 	@echo "$(RED)Arrêt de tous les services...$(NC)"
 	@if [ -f $(COMPOSE_FILE_PLUMO) ]; then docker compose -f $(COMPOSE_FILE_PLUMO) down 2>/dev/null || true; fi
 	@if [ -f $(COMPOSE_FILE_AUX) ]; then docker compose -f $(COMPOSE_FILE_AUX) down 2>/dev/null || true; fi
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) down
+	$(COMPOSE) down
 	@echo "$(GREEN)Tous les services sont arrêtés!$(NC)"
 
 restart: ## Redémarre tous les services Traefik
@@ -76,55 +119,55 @@ restart-all: ## Redémarre TOUS les services
 	$(MAKE) up-all
 
 logs: ## Affiche les logs de tous les services
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f
+	$(COMPOSE) logs -f
 
 logs-traefik: ## Affiche les logs de Traefik uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f traefik
+	$(COMPOSE) logs -f traefik
 
 logs-portainer: ## Affiche les logs de Portainer uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f portainer
+	$(COMPOSE) logs -f portainer
 
 logs-adminer: ## Affiche les logs d'Adminer uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f adminer
+	$(COMPOSE) logs -f adminer
 
 logs-dozzle: ## Affiche les logs de Dozzle uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f dozzle
+	$(COMPOSE) logs -f dozzle
 
 logs-mailer: ## Affiche les logs de Mailer (Mailpit) uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f mailer
+	$(COMPOSE) logs -f mailer
 
 logs-mariadb: ## Affiche les logs de MariaDB uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f mariadb
+	$(COMPOSE) logs -f mariadb
 
 logs-socket-proxy: ## Affiche les logs du proxy du socket Docker
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f docker-socket-proxy
+	$(COMPOSE) logs -f docker-socket-proxy
 
 logs-wud: ## Affiche les logs de WUD (suivi des mises à jour)
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f wud
+	$(COMPOSE) logs -f wud
 
 logs-dashboard: ## Affiche les logs du dashboard Nuxt
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f dashboard
+	$(COMPOSE) logs -f dashboard
 
 logs-registry: ## Affiche les logs du cache d'images Docker Hub
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f registry-cache
+	$(COMPOSE) logs -f registry-cache
 
 logs-hoppscotch-sync: ## Affiche les logs de la synchro .http -> Hoppscotch
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f hoppscotch-sync
+	$(COMPOSE) logs -f hoppscotch-sync
 
 dozzle: ## Démarre Dozzle (à la demande : coûteux en CPU tant qu'il tourne)
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) --profile on-demand up -d dozzle
+	$(COMPOSE) --profile on-demand up -d dozzle
 
 dozzle-stop: ## Arrête Dozzle
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) --profile on-demand stop dozzle
+	$(COMPOSE) --profile on-demand stop dozzle
 
 logs-prometheus: ## Affiche les logs de Prometheus uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f prometheus
+	$(COMPOSE) logs -f prometheus
 
 logs-grafana: ## Affiche les logs de Grafana uniquement
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f grafana
+	$(COMPOSE) logs -f grafana
 
 logs-restic: ## Affiche les logs des sauvegardes Restic
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f restic
+	$(COMPOSE) logs -f restic
 
 logs-plumo: ## Affiche les logs de Plumo (backend + frontend)
 	@if [ -f $(COMPOSE_FILE_PLUMO) ]; then \
@@ -135,7 +178,7 @@ logs-plumo: ## Affiche les logs de Plumo (backend + frontend)
 
 status: ## Affiche le statut des services Traefik
 	@echo "$(GREEN)Statut des services Traefik:$(NC)"
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) ps
+	$(COMPOSE) ps
 
 ps: ## Alias pour status
 	$(MAKE) status
@@ -147,7 +190,7 @@ ps-all: ## Affiche le statut de TOUS les conteneurs
 
 hosts: ## Liste les hôtes Traefik disponibles
 	@echo "$(GREEN)Hôtes Traefik disponibles:$(NC)"
-	@docker compose -f $(COMPOSE_FILE) config | grep -oP 'Host\(`\K[^`]+' | sort -u | awk '{print "  - https://" $$1}'
+	@$(COMPOSE) config | grep -oP 'Host\(`\K[^`]+' | sort -u | awk '{print "  - https://" $$1}'
 
 sync-hosts: ## Synchronise les hôtes Traefik avec le fichier hosts de Windows (Bash)
 	@echo "$(YELLOW)Synchronisation des hôtes (WSL)...$(NC)"
@@ -160,15 +203,15 @@ sync-hosts-ps: ## Synchronise les hôtes Traefik avec le fichier hosts de Window
 
 build: ## Reconstruit les images (si nécessaire)
 	@echo "$(YELLOW)Reconstruction des images...$(NC)"
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) build
+	$(COMPOSE) build
 
 pull: ## Met à jour les images depuis Docker Hub
 	@echo "$(YELLOW)Mise à jour des images...$(NC)"
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) pull
+	$(COMPOSE) pull
 
 clean: ## Arrête les services et supprime les conteneurs
 	@echo "$(RED)Nettoyage des conteneurs...$(NC)"
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) down --remove-orphans
+	$(COMPOSE) down --remove-orphans
 	@echo "$(GREEN)Nettoyage terminé!$(NC)"
 
 prune: ## Supprime les images, volumes et réseaux inutilisés
@@ -184,44 +227,53 @@ prune: ## Supprime les images, volumes et réseaux inutilisés
 		echo "$(YELLOW)Opération annulée.$(NC)"; \
 	fi
 
-network: ## Crée les réseaux bme_network s'ils n'existent pas
-	@echo "$(YELLOW)Vérification des réseaux...$(NC)"
-	@docker network prune -f >/dev/null 2>&1 || true
-	@if ! docker network inspect bme_network >/dev/null 2>&1; then \
-		echo "$(GREEN)Création du réseau bme_network ($(NETWORK_SUBNET))...$(NC)"; \
-		docker network create --subnet=$(NETWORK_SUBNET) --gateway=$(NETWORK_GATEWAY) bme_network; \
-		echo "$(GREEN)Réseau bme_network créé avec succès!$(NC)"; \
+network: ## Crée le réseau STACK_NETWORK s'il n'existe pas (réseaux à IP fixes pour le profil BME)
+ifeq ($(STACK_NETWORK),$(BME_NETWORK))
+	@$(MAKE) --no-print-directory network-bme
+else
+	@if ! docker network inspect $(STACK_NETWORK) >/dev/null 2>&1; then \
+		echo "$(GREEN)Création du réseau $(STACK_NETWORK)...$(NC)"; \
+		docker network create $(STACK_NETWORK); \
 	else \
-		echo "$(GREEN)Le réseau bme_network existe déjà.$(NC)"; \
+		echo "$(GREEN)Le réseau $(STACK_NETWORK) existe déjà.$(NC)"; \
 	fi
-	@if ! docker network inspect bme_network_aux >/dev/null 2>&1; then \
-		echo "$(GREEN)Création du réseau bme_network_aux ($(NETWORK_SUBNET_AUX))...$(NC)"; \
-		docker network create --subnet=$(NETWORK_SUBNET_AUX) --gateway=$(NETWORK_GATEWAY_AUX) bme_network_aux; \
-		echo "$(GREEN)Réseau bme_network_aux créé avec succès!$(NC)"; \
+endif
+
+network-bme: ## Crée les réseaux bme_network et bme_network_aux (IP fixes) s'ils n'existent pas
+	@echo "$(YELLOW)Vérification des réseaux BME...$(NC)"
+	@docker network prune -f >/dev/null 2>&1 || true
+	@if ! docker network inspect $(BME_NETWORK) >/dev/null 2>&1; then \
+		echo "$(GREEN)Création du réseau $(BME_NETWORK) ($(NETWORK_SUBNET))...$(NC)"; \
+		docker network create --subnet=$(NETWORK_SUBNET) --gateway=$(NETWORK_GATEWAY) $(BME_NETWORK); \
+		echo "$(GREEN)Réseau $(BME_NETWORK) créé avec succès!$(NC)"; \
 	else \
-		echo "$(GREEN)Le réseau bme_network_aux existe déjà.$(NC)"; \
+		echo "$(GREEN)Le réseau $(BME_NETWORK) existe déjà.$(NC)"; \
+	fi
+	@if ! docker network inspect $(BME_NETWORK_AUX) >/dev/null 2>&1; then \
+		echo "$(GREEN)Création du réseau $(BME_NETWORK_AUX) ($(NETWORK_SUBNET_AUX))...$(NC)"; \
+		docker network create --subnet=$(NETWORK_SUBNET_AUX) --gateway=$(NETWORK_GATEWAY_AUX) $(BME_NETWORK_AUX); \
+		echo "$(GREEN)Réseau $(BME_NETWORK_AUX) créé avec succès!$(NC)"; \
+	else \
+		echo "$(GREEN)Le réseau $(BME_NETWORK_AUX) existe déjà.$(NC)"; \
 	fi
 
 network-info: ## Affiche les informations des réseaux Docker
-	@echo "$(BLUE)📊 Informations des réseaux Docker:$(NC)"
+	@echo "$(BLUE)📊 Informations des réseaux Docker (STACK_NETWORK=$(STACK_NETWORK)):$(NC)"
 	@echo ""
 	@docker network ls | head -1
-	@docker network ls | grep -E "(bme_network|bridge|host)"
-	@echo ""
-	@if docker network inspect bme_network >/dev/null 2>&1; then \
-		echo "$(YELLOW)Détails bme_network:$(NC)"; \
-		docker network inspect bme_network | grep -A 5 "IPAM" | grep -E "(Subnet|Gateway)"; \
-	fi
-	@echo ""
-	@if docker network inspect bme_network_aux >/dev/null 2>&1; then \
-		echo "$(YELLOW)Détails bme_network_aux:$(NC)"; \
-		docker network inspect bme_network_aux | grep -A 5 "IPAM" | grep -E "(Subnet|Gateway)"; \
-	fi
+	@docker network ls | grep -E "($(STACK_NETWORK)|$(BME_NETWORK)|bridge|host)"
+	@for n in $(sort $(STACK_NETWORK) $(BME_NETWORK) $(BME_NETWORK_AUX)); do \
+		if docker network inspect $$n >/dev/null 2>&1; then \
+			echo ""; \
+			echo "$(YELLOW)Détails $$n:$(NC)"; \
+			docker network inspect $$n | grep -A 5 "IPAM" | grep -E "(Subnet|Gateway)"; \
+		fi; \
+	done
 
-migrate-network: ## Migre les réseaux pour éviter le conflit avec Oracle (172.18.20.60)
+migrate-network: ## Profil BME : migre les réseaux pour éviter le conflit avec Oracle (172.18.20.60)
 	@echo "$(RED)⚠️  Cette commande va:$(NC)"
 	@echo "  - Arrêter tous les services Docker"
-	@echo "  - Supprimer les réseaux bme_network actuels"
+	@echo "  - Supprimer les réseaux $(BME_NETWORK) actuels"
 	@echo "  - Recréer les réseaux sur $(NETWORK_SUBNET) et $(NETWORK_SUBNET_AUX)"
 	@echo "  - Redémarrer tous les services"
 	@echo ""
@@ -241,15 +293,15 @@ _do-migrate-network:
 	@sleep 2
 	@echo ""
 	@echo "$(BLUE)🗑️  Étape 2/5: Suppression des anciens réseaux...$(NC)"
-	@docker network rm bme_network 2>/dev/null && echo "$(GREEN)✓ bme_network supprimé$(NC)" || echo "$(YELLOW)⚠ bme_network déjà supprimé$(NC)"
-	@docker network rm bme_network_aux 2>/dev/null && echo "$(GREEN)✓ bme_network_aux supprimé$(NC)" || echo "$(YELLOW)⚠ bme_network_aux déjà supprimé$(NC)"
+	@docker network rm $(BME_NETWORK) 2>/dev/null && echo "$(GREEN)✓ $(BME_NETWORK) supprimé$(NC)" || echo "$(YELLOW)⚠ $(BME_NETWORK) déjà supprimé$(NC)"
+	@docker network rm $(BME_NETWORK_AUX) 2>/dev/null && echo "$(GREEN)✓ $(BME_NETWORK_AUX) supprimé$(NC)" || echo "$(YELLOW)⚠ $(BME_NETWORK_AUX) déjà supprimé$(NC)"
 	@docker network prune -f >/dev/null 2>&1
 	@echo ""
 	@echo "$(BLUE)🔧 Étape 3/5: Création des nouveaux réseaux...$(NC)"
-	@docker network create --subnet=$(NETWORK_SUBNET) --gateway=$(NETWORK_GATEWAY) bme_network
-	@echo "$(GREEN)✓ bme_network créé ($(NETWORK_SUBNET))$(NC)"
-	@docker network create --subnet=$(NETWORK_SUBNET_AUX) --gateway=$(NETWORK_GATEWAY_AUX) bme_network_aux
-	@echo "$(GREEN)✓ bme_network_aux créé ($(NETWORK_SUBNET_AUX))$(NC)"
+	@docker network create --subnet=$(NETWORK_SUBNET) --gateway=$(NETWORK_GATEWAY) $(BME_NETWORK)
+	@echo "$(GREEN)✓ $(BME_NETWORK) créé ($(NETWORK_SUBNET))$(NC)"
+	@docker network create --subnet=$(NETWORK_SUBNET_AUX) --gateway=$(NETWORK_GATEWAY_AUX) $(BME_NETWORK_AUX)
+	@echo "$(GREEN)✓ $(BME_NETWORK_AUX) créé ($(NETWORK_SUBNET_AUX))$(NC)"
 	@echo ""
 	@echo "$(BLUE)📋 Étape 4/5: Vérification de la configuration...$(NC)"
 	@$(MAKE) network-info
@@ -301,7 +353,7 @@ healthchecks-init: ## Crée ou met à jour les contrôles Healthchecks de la sta
 	key=$$(echo "$$out" | sed -n 's/^PING_KEY=//p'); \
 	if grep -q '^HEALTHCHECKS_PING_KEY=' .env; then sed -i "s/^HEALTHCHECKS_PING_KEY=.*/HEALTHCHECKS_PING_KEY=$$key/" .env; \
 	else printf 'HEALTHCHECKS_PING_KEY=%s\n' "$$key" >> .env; fi; \
-	echo "$(GREEN)Clé de ping enregistrée dans .env. Recréer restic pour l'utiliser : docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) up -d restic$(NC)"
+	echo "$(GREEN)Clé de ping enregistrée dans .env. Recréer restic pour l'utiliser : $(COMPOSE) up -d restic$(NC)"
 
 certs: ## Génère l'autorité locale et le certificat HTTPS *.DOMAIN de la dev-stack (idempotent)
 	@./scripts/make_certs.sh
@@ -314,15 +366,15 @@ registry-mirror: ## Branche le daemon Docker sur le cache d'images (sudo, sans r
 
 update-one: ## Met à jour un service sans passer par WUD (make update-one s=glance)
 	@if [ -z "$(s)" ]; then echo "$(RED)Usage: make update-one s=<service>$(NC)"; exit 1; fi
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) pull $(s)
-	docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) up -d $(s)
+	$(COMPOSE) pull $(s)
+	$(COMPOSE) up -d $(s)
 
 health: ## Vérifie la santé des services
 	@echo "$(GREEN)Vérification de la santé des services:$(NC)"
 	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(traefik|portainer|adminer|plumo|dozzle|mailer|mariadb|socket-proxy|dashboard|wud|cadvisor|node-exporter|prometheus|grafana|restic)"
 
 # Sauvegardes (Restic)
-RESTIC = docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) exec restic
+RESTIC = $(COMPOSE) exec restic
 
 backup-now: ## Lance une sauvegarde immédiate (MariaDB, Portainer, exports Oracle)
 	$(RESTIC) /scripts/backup.sh

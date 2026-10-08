@@ -64,7 +64,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
-      - "--providers.docker.network=bme_network"
+      - "--providers.docker.network=${STACK_NETWORK:-devstack}"
 
       - "--api.dashboard=true"
 
@@ -128,7 +128,7 @@ services:
       - "wud.tag.include=^v3\\.\\d+$$"
 
     networks:
-      bme_network:
+      stack_network:
         # Les conteneurs (Portainer, WUD) joignent l'émetteur OIDC par son nom public
         aliases:
           - ${SUBDOMAIN}-auth.${DOMAIN}
@@ -169,7 +169,7 @@ services:
       - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   adminer:
     image: adminer:latest
@@ -195,7 +195,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   mariadb:
     image: mariadb:12.2
@@ -225,7 +225,7 @@ services:
       - "wud.tag.include=^\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   # EN PAUSE : base corrompue (ORA-01578 dans system01.dbf), copie du volume dans
   # docker-master_oracle_data_copie_20260929. Hors du démarrage automatique
@@ -263,7 +263,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   mailer:
     image: axllent/mailpit:latest
@@ -293,7 +293,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   # À la demande : fait double emploi avec le dashboard Nuxt. Hors du démarrage
   # automatique (profil on-demand) : à lancer depuis la page Services du dashboard.
@@ -327,7 +327,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
       - socket_proxy
 
   # À la demande : fait double emploi avec le dashboard Nuxt. Hors du démarrage
@@ -363,7 +363,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   # À la demande : Dozzle diffuse en continu les statistiques de tous les
   # conteneurs (~20 % de CPU pour dockerd et autant pour containerd), sans
@@ -403,7 +403,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
       - socket_proxy
 
   # Suivi et application des mises à jour d'images. Alerte dans Mailpit ;
@@ -473,7 +473,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   cadvisor:
     image: ghcr.io/google/cadvisor:v0.60.6
@@ -516,7 +516,7 @@ services:
       - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -538,7 +538,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   prometheus:
     image: prom/prometheus:latest
@@ -576,7 +576,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   grafana:
     image: grafana/grafana:latest
@@ -623,7 +623,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Sauvegardes chiffrées. MariaDB est sauvegardée par dump (cohérent),
   # Oracle via `make backup-oracle` (export Data Pump déposé dans mnt/restic/dumps).
@@ -665,7 +665,7 @@ services:
       - "glance.id=restic"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Analyse de vulnérabilités des images en cours d'exécution, une fois par jour
   # (TRIVY_CRON) ou à la demande depuis le dashboard. Lit les images via le proxy
@@ -697,7 +697,7 @@ services:
       - "dashboard.category=stack"
 
     networks:
-      - bme_network
+      - stack_network
       - socket_proxy
 
   # Login unique pour les outils web (forward-auth Traefik) : ajouter le
@@ -745,7 +745,7 @@ services:
       - "wud.tag.include=^v\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   it-tools:
     image: ghcr.io/corentinth/it-tools:latest
@@ -772,7 +772,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Client d'API (façon Postman). Tout est servi sur une URL : / (appli),
   # /admin (configuration : auth, SMTP → Mailpit) et /backend.
@@ -823,7 +823,7 @@ services:
       - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Synchronisation continue des fichiers .http JetBrains des projets vers
   # Hoppscotch (sens unique : les fichiers font foi). Projets montés en lecture
@@ -856,7 +856,7 @@ services:
       - "dashboard.category=stack"
 
     networks:
-      - bme_network
+      - stack_network
 
   hoppscotch-db:
     image: postgres:16-alpine
@@ -888,7 +888,7 @@ services:
       - "wud.watch.digest=true"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Cache des images Docker Hub (pull-through) : chaque image n'est téléchargée
   # qu'une fois puis servie en local. La source est mirror.gcr.io, le miroir de
@@ -925,7 +925,7 @@ services:
       - "wud.tag.include=^3\\.\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Simulation d'API externes. Les stubs sont des fichiers JSON versionnés dans
   # mnt/wiremock/mappings (réponses volumineuses dans mnt/wiremock/__files),
@@ -974,7 +974,7 @@ services:
       - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Surveillance des tâches planifiées : chaque tâche "pingue" son URL, une
   # alerte part (Mailpit) si le ping n'arrive pas à l'heure ou signale un échec.
@@ -1037,7 +1037,7 @@ services:
       - "wud.tag.include=^v\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Gestion des projets Compose (éditer, démarrer, arrêter, mettre à jour).
   # Il voit les projets de PROJECTS_DIR via les liens de mnt/dockge/stacks
@@ -1078,7 +1078,7 @@ services:
       - "wud.tag.include=^1\\.\\d+\\.\\d+$$"
 
     networks:
-      - bme_network
+      - stack_network
 
   # Dashboard Nuxt de la stack : état des services (lecture seule), actions
   # start/stop/restart via le proxy dédié, métriques, mises à jour WUD, sauvegardes.
@@ -1123,7 +1123,7 @@ services:
       - "glance.id=dashboard"
 
     networks:
-      - bme_network
+      - stack_network
       - socket_proxy
       - socket_proxy_actions
 
@@ -1135,7 +1135,11 @@ volumes:
   grafana_data:
 
 networks:
-  bme_network:
+  # Réseau partagé avec les projets routés par Traefik. Son nom vient de
+  # STACK_NETWORK (.env) : devstack par défaut (`make start`), bme_network pour
+  # le profil BME (`make start-bme`, réseau rejoint par Plumo, Docus...).
+  stack_network:
+    name: ${STACK_NETWORK:-devstack}
     external: true
   socket_proxy:
     internal: true
