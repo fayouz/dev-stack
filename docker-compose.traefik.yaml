@@ -650,6 +650,7 @@ services:
       - ./mnt/portainer/data:/source/portainer:ro
       - ./mnt/restic/dumps:/source/oracle-dumps:ro
       - ./mnt/restic/status:/status
+      - ./mnt/restic/requests:/requests
       - ${RESTIC_REPOSITORY_PATH:-./mnt/restic/repo}:/repo
 
     depends_on:
@@ -665,6 +666,39 @@ services:
 
     networks:
       - bme_network
+
+  # Analyse de vulnérabilités des images en cours d'exécution, une fois par jour
+  # (TRIVY_CRON) ou à la demande depuis le dashboard. Lit les images via le proxy
+  # du socket en lecture seule ; la base de vulnérabilités vient de mirror.gcr.io.
+  trivy:
+    build: ./mnt/trivy
+    image: docker-master/trivy:local
+    container_name: trivy
+    restart: unless-stopped
+    # L'analyse d'une grosse image est gourmande : on laisse de la marge au reste
+    cpus: 1.0
+    mem_limit: 2g
+
+    environment:
+      - TZ=Europe/Paris
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+      - TRIVY_CACHE_DIR=/cache
+      - TRIVY_CRON=${TRIVY_CRON:-0 13 * * *}
+
+    volumes:
+      - ./mnt/trivy/cache:/cache
+      - ./mnt/trivy/status:/status
+      - ./mnt/trivy/requests:/requests
+
+    depends_on:
+      - docker-socket-proxy
+
+    labels:
+      - "dashboard.category=stack"
+
+    networks:
+      - bme_network
+      - socket_proxy
 
   # Login unique pour les outils web (forward-auth Traefik) : ajouter le
   # middleware `tinyauth` à un router pour le protéger. Session partagée
@@ -1060,8 +1094,13 @@ services:
       - NUXT_WUD_PASSWORD=${WUD_ADMIN_PASSWORD:-admin}
       - NUXT_PUBLIC_WUD_PUBLIC_URL=https://${SUBDOMAIN}-wud.${DOMAIN}
 
+    # États écrits par restic et trivy ; demandes déposées pour eux (sauvegarde,
+    # analyse), le dashboard n'ayant pas le droit d'exécuter de commande ailleurs
     volumes:
-      - ./mnt/restic/status:/status:ro
+      - ./mnt/restic/status:/status/restic:ro
+      - ./mnt/restic/requests:/requests/restic
+      - ./mnt/trivy/status:/status/trivy:ro
+      - ./mnt/trivy/requests:/requests/trivy
 
     depends_on:
       - docker-socket-proxy

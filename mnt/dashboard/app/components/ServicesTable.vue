@@ -85,24 +85,30 @@ const confirmOpen = computed({
   set: (open) => { if (!open) pending.value = null },
 })
 
+// Tiroir de détail (activité, logs) du service choisi
+const drawer = ref<{ name: string, tab: 'activity' | 'logs' } | null>(null)
+const drawerOpen = computed({
+  get: () => drawer.value !== null,
+  set: (open) => { if (!open) drawer.value = null },
+})
+const drawerTab = computed({
+  get: () => drawer.value?.tab ?? 'activity',
+  set: (tab) => { if (drawer.value) drawer.value.tab = tab },
+})
+
 async function confirmAction() {
   if (!pending.value) return
   const { service, action } = pending.value
   pending.value = null
   running.value[service.name] = action
-  try {
-    await $fetch(`/api/containers/${encodeURIComponent(service.name)}/${action}`, {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'dashboard' },
-    })
+  const failure = await postAction(`/api/containers/${encodeURIComponent(service.name)}/${action}`)
+  if (failure) {
+    toast.add({ title: `Échec : ${ACTION_LABELS[action].verb.toLowerCase()} ${service.name}`, description: failure, color: 'error', icon: 'i-lucide-circle-x' })
+  } else {
     toast.add({ title: `${service.name} ${ACTION_LABELS[action].done}`, color: 'success', icon: 'i-lucide-circle-check' })
-  } catch (err) {
-    const message = (err as { data?: { statusMessage?: string } }).data?.statusMessage ?? String(err)
-    toast.add({ title: `Échec : ${ACTION_LABELS[action].verb.toLowerCase()} ${service.name}`, description: message, color: 'error', icon: 'i-lucide-circle-x' })
-  } finally {
-    delete running.value[service.name]
-    await refreshNuxtData('containers')
   }
+  delete running.value[service.name]
+  await refreshNuxtData('containers')
 }
 </script>
 
@@ -201,6 +207,22 @@ async function confirmAction() {
 
       <template #actions-cell="{ row }">
         <div class="flex justify-end gap-1">
+          <UButton
+            icon="i-lucide-chart-line"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :aria-label="`Activité de ${row.original.name}`"
+            @click="drawer = { name: row.original.name, tab: 'activity' }"
+          />
+          <UButton
+            icon="i-lucide-scroll-text"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :aria-label="`Logs de ${row.original.name}`"
+            @click="drawer = { name: row.original.name, tab: 'logs' }"
+          />
           <template v-if="row.original.state === 'running'">
             <UButton
               icon="i-lucide-rotate-cw"
@@ -238,6 +260,13 @@ async function confirmAction() {
         </div>
       </template>
     </UTable>
+
+    <ServiceDrawer
+      v-if="drawer"
+      v-model:open="drawerOpen"
+      v-model:tab="drawerTab"
+      :name="drawer.name"
+    />
 
     <UModal
       v-model:open="confirmOpen"

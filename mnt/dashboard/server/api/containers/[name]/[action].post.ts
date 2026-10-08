@@ -1,10 +1,7 @@
 const ACTIONS = ['start', 'stop', 'restart']
 
 export default defineEventHandler(async (event) => {
-  // Protection CSRF : un formulaire venant d'un autre site ne peut pas poser cet en-tête
-  if (getHeader(event, 'x-requested-with') !== 'dashboard') {
-    throw createError({ statusCode: 403, statusMessage: 'Requête refusée' })
-  }
+  assertFromDashboard(event)
 
   const name = getRouterParam(event, 'name') ?? ''
   const action = getRouterParam(event, 'action') ?? ''

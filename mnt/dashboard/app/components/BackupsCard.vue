@@ -3,17 +3,48 @@ const { data } = await useBackups()
 
 const lastRun = computed(() => data.value?.available ? data.value.lastRun : null)
 const snapshots = computed(() => data.value?.available ? data.value.snapshots.slice(0, 8) : [])
+
+const toast = useToast()
+const busy = computed(() => !!(data.value?.requested || data.value?.running))
+usePollWhile(busy, 'backups')
+
+// Fin d'une sauvegarde suivie depuis cette page : on prévient du résultat
+watch(busy, (now, before) => {
+  if (!before || now || !lastRun.value) return
+  if (lastRun.value.result === 'ok') toast.add({ title: 'Sauvegarde terminée', color: 'success', icon: 'i-lucide-circle-check' })
+  else if (lastRun.value.result === 'error') toast.add({ title: 'La sauvegarde a échoué', description: lastRun.value.message, color: 'error', icon: 'i-lucide-circle-x' })
+})
+
+async function backupNow() {
+  const failure = await postAction('/api/backups/run')
+  if (failure) toast.add({ title: 'Impossible de lancer la sauvegarde', description: failure, color: 'error', icon: 'i-lucide-circle-x' })
+  await refreshNuxtData('backups')
+}
 </script>
 
 <template>
   <UCard>
     <template #header>
-      <h2 class="flex items-center gap-2 font-semibold">
-        <UIcon name="i-lucide-archive" /> Sauvegardes
-      </h2>
-      <p v-if="lastRun && lastRun.result !== 'none'" class="text-sm text-muted">
-        Dernière exécution {{ formatRelative(lastRun.at) }}
-      </p>
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-archive" /> Sauvegardes
+          </h2>
+          <p v-if="data?.running" class="text-sm text-muted">Sauvegarde en cours…</p>
+          <p v-else-if="data?.requested" class="text-sm text-muted">Sauvegarde demandée, démarrage imminent…</p>
+          <p v-else-if="lastRun && lastRun.result !== 'none'" class="text-sm text-muted">
+            Dernière exécution {{ formatRelative(lastRun.at) }}
+          </p>
+        </div>
+        <UButton
+          label="Sauvegarder maintenant"
+          icon="i-lucide-save"
+          size="sm"
+          :loading="busy"
+          :disabled="busy"
+          @click="backupNow"
+        />
+      </div>
     </template>
 
     <UAlert
@@ -22,7 +53,7 @@ const snapshots = computed(() => data.value?.available ? data.value.snapshots.sl
       color="neutral"
       variant="subtle"
       title="Aucun état de sauvegarde"
-      description="Le conteneur restic n'a pas encore écrit son état. Lancez `make backup-now`."
+      description="Le conteneur restic n'a pas encore écrit son état. Lancez une première sauvegarde."
     />
     <template v-else-if="lastRun">
       <UAlert

@@ -14,6 +14,12 @@ fi
 
 # État initial pour le dashboard, conservé s'il existe déjà
 [ -f /status/status.json ] || /scripts/status.sh none
+rm -f /status/running
+
+# Demandes déposées par le dashboard (bouton « Sauvegarder maintenant »), qui
+# tourne sous un autre utilisateur : le dossier doit lui être accessible en écriture
+mkdir -p /requests && chmod 1777 /requests
+/scripts/requests.sh > /proc/1/fd/1 2>&1 &
 
 # Les sorties des tâches vont dans les logs du conteneur (docker logs restic)
 cat > /etc/crontabs/root <<EOF

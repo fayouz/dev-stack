@@ -1,5 +1,8 @@
 <script setup lang="ts">
 // Logs en temps réel d'un service, choisi dans le header de la carte
+// (ou imposé par `service`, depuis le tiroir de détail de la page Services)
+const props = defineProps<{ service?: string }>()
+
 interface LogLine {
   id: number
   t: string
@@ -13,12 +16,12 @@ const config = useRuntimeConfig()
 const { data: containers } = await useContainers()
 
 const services = computed(() => (containers.value?.containers ?? [])
-  .filter(c => c.state === 'running')
+  .filter(c => c.state === 'running' || c.name === props.service)
   .map(c => ({ label: c.name, value: c.name, suffix: c.project ?? undefined })))
 
-const selected = ref<string>(
-  (containers.value?.containers ?? []).find(c => c.project === config.public.defaultProject && c.state === 'running')?.name ?? '',
-)
+const selected = ref<string>(props.service
+  ?? (containers.value?.containers ?? []).find(c => c.project === config.public.defaultProject && c.state === 'running')?.name
+  ?? '')
 const filter = ref('')
 const following = ref(true)
 const status = ref<'connecting' | 'live' | 'closed'>('closed')

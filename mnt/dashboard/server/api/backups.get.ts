@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 // Écrit par mnt/restic/scripts/status.sh après chaque sauvegarde
 interface BackupStatus {
@@ -13,11 +14,18 @@ interface BackupStatus {
 }
 
 export default defineEventHandler(async () => {
-  const { backupStatusFile } = useRuntimeConfig()
+  const { backupStatusDir, backupRequestDir } = useRuntimeConfig()
+  // Sauvegarde demandée depuis le dashboard (pas encore prise en charge), puis en cours
+  const [requested, running] = await Promise.all([
+    fileExists(join(backupRequestDir, 'backup')),
+    fileExists(join(backupStatusDir, 'running')),
+  ])
   try {
-    const status = JSON.parse(await readFile(backupStatusFile, 'utf8')) as BackupStatus
+    const status = JSON.parse(await readFile(join(backupStatusDir, 'status.json'), 'utf8')) as BackupStatus
     return {
       available: true as const,
+      requested,
+      running,
       lastRun: status.lastRun,
       snapshots: status.snapshots
         .map(s => ({
@@ -30,6 +38,6 @@ export default defineEventHandler(async () => {
         .sort((a, b) => b.time.localeCompare(a.time)),
     }
   } catch {
-    return { available: false as const }
+    return { available: false as const, requested, running }
   }
 })

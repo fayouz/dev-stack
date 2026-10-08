@@ -7,6 +7,10 @@ mnt/postgres/
 mnt/restic/repo/
 mnt/restic/dumps/
 mnt/restic/status/
+mnt/restic/requests/
+mnt/trivy/cache/
+mnt/trivy/status/
+mnt/trivy/requests/
 mnt/wud/store/
 # Liens vers les projets locaux, propres à chaque machine (make dockge-sync)
 mnt/dockge/stacks/

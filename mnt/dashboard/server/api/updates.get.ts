@@ -1,4 +1,4 @@
-interface WudContainer {
+export interface WudContainer {
   id: string
   name: string
   image: { name: string, tag: { value: string } }
@@ -9,12 +9,7 @@ interface WudContainer {
 }
 
 export default defineEventHandler(async () => {
-  const { wudUrl, wudUser, wudPassword } = useRuntimeConfig()
-  const containers = await $fetch<WudContainer[]>('/api/containers', {
-    baseURL: wudUrl,
-    headers: { Authorization: `Basic ${Buffer.from(`${wudUser}:${wudPassword}`).toString('base64')}` },
-    timeout: 5000,
-  }).catch((error: Error) => {
+  const containers = await wudFetch<WudContainer[]>('/api/containers').catch((error: Error) => {
     throw createError({ statusCode: 502, statusMessage: `WUD injoignable : ${error.message}` })
   })
 
@@ -24,6 +19,7 @@ export default defineEventHandler(async () => {
     updates: containers
       .filter(c => c.updateAvailable)
       .map(c => ({
+        id: c.id,
         name: c.name,
         image: c.image.name.replace(/^library\//, ''),
         current: c.image.tag.value,

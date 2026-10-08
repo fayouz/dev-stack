@@ -69,11 +69,10 @@ Contexte à garder en tête :
 
 ### Dashboard Nuxt (`mnt/dashboard/`)
 
-- [ ] **Bouton « Logs »** sur chaque ligne de la page Services, qui ouvre la carte des logs sur ce service.
-- [ ] **Bouton « Mettre à jour »** dans la liste des mises à jour, en appelant l'API de WUD (déclencheur `dockercompose.stack`).
-- [ ] **Bouton « Sauvegarder maintenant »**, qui lance `backup.sh` dans le conteneur `restic`.
-- [ ] **Mini-historique CPU/RAM** par service (page de détail ou tiroir).
-- [ ] **Carte « Vulnérabilités »** alimentée par Trivy.
+- [x] **Tiroir de détail par service** (page Services) : historique CPU / RAM (15 min à 24 h) et logs en direct.
+- [x] **Bouton « Mettre à jour »** dans la liste des mises à jour, via le déclencheur `dockercompose.stack` de WUD (confirmation, alerte pour les versions majeures).
+- [x] **Bouton « Sauvegarder maintenant »** : le dashboard dépose une demande que le conteneur `restic` exécute (pas d'exec Docker).
+- [x] **Page « Vulnérabilités »** alimentée par Trivy (analyse quotidienne des images en cours d'exécution, ou à la demande).
 
 ### Faire de la place
 

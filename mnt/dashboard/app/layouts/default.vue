@@ -3,6 +3,7 @@ import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from
 
 const { data: containers } = await useContainers()
 const { data: updates } = await useUpdates()
+const { data: vulnerabilities } = await useVulnerabilities()
 const lastRefresh = useLastRefresh()
 
 const all = computed(() => containers.value?.containers ?? [])
@@ -11,6 +12,11 @@ const all = computed(() => containers.value?.containers ?? [])
 const problemCount = computed(() => all.value
   .filter(c => (c.category === 'stack' || c.category === 'tools') && !(c.onDemand && c.state !== 'running') && (c.state !== 'running' || c.health === 'unhealthy'))
   .length)
+
+// Vulnérabilités critiques, toutes images confondues
+const criticalCount = computed(() => vulnerabilities.value?.available
+  ? vulnerabilities.value.images.reduce((sum, image) => sum + image.counts.CRITICAL, 0)
+  : 0)
 
 const navigation = computed<NavigationMenuItem[]>(() => [
   { label: 'Vue d\'ensemble', icon: 'i-lucide-layout-dashboard', to: '/' },
@@ -27,6 +33,12 @@ const navigation = computed<NavigationMenuItem[]>(() => [
     badge: updates.value?.updates.length || undefined,
   },
   { label: 'Sauvegardes', icon: 'i-lucide-archive', to: '/sauvegardes' },
+  {
+    label: 'Vulnérabilités',
+    icon: 'i-lucide-shield-alert',
+    to: '/vulnerabilites',
+    badge: criticalCount.value ? { label: String(criticalCount.value), color: 'error', variant: 'subtle' } : undefined,
+  },
 ])
 
 // Liens vers les interfaces des outils de la stack, déduits des labels Traefik

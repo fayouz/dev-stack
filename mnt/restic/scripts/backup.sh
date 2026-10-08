@@ -9,6 +9,16 @@ on_error() {
 }
 trap 'on_error $LINENO' ERR
 
+# Une seule sauvegarde à la fois (planning et demandes du dashboard)
+exec 9>/tmp/backup.lock
+if ! flock -n 9; then
+    echo "Une sauvegarde est déjà en cours"
+    exit 0
+fi
+# Lu par le dashboard pour afficher « en cours »
+touch /status/running
+trap 'rm -f /status/running' EXIT
+
 echo "=== Sauvegarde du $(date '+%F %T') ==="
 /scripts/hc_ping.sh restic-backup start
 

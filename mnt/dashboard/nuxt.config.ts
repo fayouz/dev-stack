@@ -26,7 +26,10 @@ export default defineNuxtConfig({
     wudUrl: 'http://wud:3000',
     wudUser: 'admin',
     wudPassword: '',
-    backupStatusFile: '/status/status.json',
+    backupStatusDir: '/status/restic',
+    backupRequestDir: '/requests/restic',
+    trivyStatusDir: '/status/trivy',
+    trivyRequestDir: '/requests/trivy',
     public: {
       wudPublicUrl: '',
       defaultProject: 'docker-master',
