@@ -1,12 +1,14 @@
 # Idées d'évolution de la stack
 
 Suivi des évolutions de la stack : ce qui est fait, ce qui reste à régler, et les pistes pour plus tard.
+Dernière mise à jour : 8 octobre 2026.
 
 Contexte à garder en tête :
 
-- **RAM de la VM WSL** : 15,6 Go au total, dont environ 57 % déjà utilisés.
+- **RAM de la VM WSL** : 15,6 Go au total, dont environ 10 Go utilisés avec toutes les stacks.
+- **Charge** : une cinquantaine de conteneurs toutes stacks confondues. Lister les conteneurs peut prendre plusieurs secondes quand la machine est chargée.
 - **Proxy d'entreprise** : il intercepte le TLS. Le daemon Docker et les conteneurs sortent directement, contrairement au shell.
-- **Docker Hub** : la limite anonyme (`429 Too Many Requests`) est souvent atteinte.
+- **Docker Hub** : la limite anonyme (`429 Too Many Requests`) de l'IP de l'entreprise est souvent épuisée ; les pulls passent par le cache local (`registry-cache`).
 
 ## Déjà en place
 
@@ -26,16 +28,31 @@ Contexte à garder en tête :
 
 - [x] **Synchro `.http` → Hoppscotch** (`hoppscotch-sync`) : chaque projet de `PROJECTS_DIR` qui a des fichiers HTTP JetBrains a son workspace Hoppscotch (une équipe), avec ses répertoires en collections et ses environnements, mis à jour quelques secondes après chaque enregistrement. Un projet supprimé vide son workspace sans le supprimer. Sens unique : les fichiers font foi, et les modifications faites dans Hoppscotch sont écrasées. Voir `make logs-hoppscotch-sync`.
 
+- [x] **Charge maîtrisée** : cAdvisor limité aux métriques CPU, mémoire et réseau et plafonné à 1 cœur (il en saturait 4) ; Dozzle à la demande (`make dozzle`, ou bouton Démarrer du dashboard), car il coûte ~20 % de CPU à dockerd et à containerd tant qu'il tourne.
+
+- [x] **Dashboard résistant à un Docker lent** : une seule requête Docker partagée, la dernière liste connue en secours, et un bandeau qui indique son âge.
+
+- [x] **`.env` sorti du suivi git**, fichiers personnels d'IDE et d'agents IA ignorés.
+
+- [x] **Mêmes identifiants partout** : `admin` + le mot de passe du login unique pour WUD, Portainer et Dockge. Session Hoppscotch portée à 90 jours (connexion par lien e-mail une fois par trimestre).
+
+- [x] **Images mises à jour** (8 octobre) : Traefik v3.7, Portainer 2.45.2, Hoppscotch 2026.9.0, nouvelles versions d'Adminer, Glance, Mailpit et WUD. MariaDB 13 et Postgres 18 volontairement écartés (versions majeures).
+
+- [x] **Oracle mis en pause** : hors du démarrage automatique (profil `on-demand`), en attendant la décision.
+
 ## À régler en priorité
 
-- [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.
+- [ ] **Pousser la branche** `feat/stack-hardening-dashboard` (8 commits, rien n'est encore sur GitHub), puis la fusionner dans `main`.
+- [ ] **MariaDB 12 → 13** (majeure) : à faire volontairement, après une sauvegarde fraîche, pas depuis WUD. (Postgres 16 → 18 de `hoppscotch-db` est désormais bloqué dans WUD.)
+- [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`, **en pause**) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.
   - Une copie du volume en l'état existe : `docker-master_oracle_data_copie_20260929`.
   - Décision à prendre : tenter une réparation, ou recréer la base à vide.
   - Ensuite, automatiser l'export Data Pump. `make backup-oracle` est manuel pour l'instant.
-- [ ] **Sortir `.env` du suivi git** avec `git rm --cached .env`. Il contient tous les secrets de la stack.
 - [ ] **Renforcer les mots de passe MariaDB et Oracle**, aujourd'hui `root` / `password`.
 - [ ] **Enregistrer le mot de passe du login unique** (tinyauth) dans un gestionnaire de mots de passe. `.env` n'en contient que le hash.
 - [ ] **Enregistrer `RESTIC_PASSWORD`** dans un gestionnaire de mots de passe. Sans lui, les sauvegardes sont irrécupérables.
+- [ ] **Hoppscotch** : se connecter une fois sur `/admin` pour devenir administrateur de l'instance (le compte `admin@dev.localhost` ne l'est pas encore).
+- [ ] **Vrai SSO pour Portainer et WUD** : tinyauth v5 peut servir de fournisseur OIDC, mais exige le HTTPS. Passer la stack en HTTPS avec une autorité de certification locale (mkcert, à installer une fois sur Windows), puis déclarer Portainer et WUD comme clients OIDC. Hoppscotch (pas d'OIDC générique) et Dockge (aucun login externe) resteraient sur identifiants alignés.
 - [ ] **Compte Docker Hub pour WUD** (`WUD_REGISTRY_HUB_PUBLIC_LOGIN` / `WUD_REGISTRY_HUB_PUBLIC_PASSWORD`). WUD interroge Docker Hub directement pour lister les versions, et le cache d'images ne l'aide pas.
 
 ## Améliorations de l'existant
