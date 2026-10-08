@@ -8,10 +8,10 @@ COMPOSE_FILE_PLUMO = docker-compose.plumo.yaml
 PROJECT_NAME = docker-master
 
 # Réseau partagé de la stack : STACK_NETWORK de l'environnement, sinon du .env,
-# sinon devstack (même ordre de priorité que Docker Compose)
+# sinon bme_network, le profil BME par défaut (même ordre de priorité que Docker Compose)
 STACK_NETWORK ?= $(shell grep -s '^STACK_NETWORK=' .env | tail -1 | cut -d= -f2-)
 ifeq ($(strip $(STACK_NETWORK)),)
-STACK_NETWORK := devstack
+STACK_NETWORK := bme_network
 endif
 
 # Profil BME : réseaux à plages IP fixes (évite le conflit avec Oracle 172.18.20.60)
@@ -45,7 +45,7 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)Commandes disponibles:$(NC)"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-18s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-start: ## Démarre la stack, profil générique (réseau STACK_NETWORK du .env, devstack par défaut)
+start: ## Démarre la stack sur le réseau STACK_NETWORK du .env (bme_network par défaut : profil BME)
 ifeq ($(STACK_NETWORK),$(BME_NETWORK))
 	@echo "$(YELLOW)STACK_NETWORK=$(BME_NETWORK) dans .env : c'est le profil BME, à lancer avec 'make start-bme' (enchaîné automatiquement).$(NC)"
 	@$(MAKE) --no-print-directory start-bme

@@ -64,7 +64,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
-      - "--providers.docker.network=${STACK_NETWORK:-devstack}"
+      - "--providers.docker.network=${STACK_NETWORK:-bme_network}"
 
       - "--api.dashboard=true"
 
@@ -1136,10 +1136,10 @@ volumes:
 
 networks:
   # Réseau partagé avec les projets routés par Traefik. Son nom vient de
-  # STACK_NETWORK (.env) : devstack par défaut (`make start`), bme_network pour
-  # le profil BME (`make start-bme`, réseau rejoint par Plumo, Docus...).
+  # STACK_NETWORK (.env) : bme_network par défaut, profil BME (réseau rejoint
+  # par Plumo, Docus...) ; un autre nom (ex. devstack) pour le profil générique.
   stack_network:
-    name: ${STACK_NETWORK:-devstack}
+    name: ${STACK_NETWORK:-bme_network}
     external: true
   socket_proxy:
     internal: true
