@@ -56,7 +56,7 @@ services:
       - socket_proxy_actions
 
   traefik:
-    image: traefik:v3.6
+    image: traefik:v3.7
     container_name: traefik
     restart: unless-stopped
 
@@ -117,7 +117,7 @@ services:
   # Portainer garde le socket direct : il a besoin de l'API en écriture
   # (POST, exec, volumes...), un proxy n'apporterait aucune restriction.
   portainer:
-    image: portainer/portainer-ce:2.39.1
+    image: portainer/portainer-ce:2.45.2
     container_name: portainer
     restart: unless-stopped
 
@@ -663,7 +663,7 @@ services:
   # /admin (configuration : auth, SMTP → Mailpit) et /backend.
   # Les migrations de la base s'exécutent à chaque démarrage (idempotentes).
   hoppscotch:
-    image: hoppscotch/hoppscotch:2026.8.2
+    image: hoppscotch/hoppscotch:2026.9.0
     container_name: hoppscotch
     restart: unless-stopped
     entrypoint: ["tini", "--"]
