@@ -295,10 +295,13 @@ services:
     networks:
       - bme_network
 
+  # À la demande : fait double emploi avec le dashboard Nuxt. Hors du démarrage
+  # automatique (profil on-demand) : à lancer depuis la page Services du dashboard.
   glance:
     image: glanceapp/glance
     container_name: glance
-    restart: unless-stopped
+    restart: "no"
+    profiles: ["on-demand"]
 
     environment:
       - DOCKER_API_VERSION=1.40
@@ -311,6 +314,7 @@ services:
 
     labels:
       - "dashboard.category=tools"
+      - "dashboard.on-demand=true"
 
       - "traefik.enable=true"
       - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
@@ -326,10 +330,13 @@ services:
       - bme_network
       - socket_proxy
 
+  # À la demande : fait double emploi avec le dashboard Nuxt. Hors du démarrage
+  # automatique (profil on-demand) : à lancer depuis la page Services du dashboard.
   organizr:
     image: organizr/organizr
     container_name: organizr
-    restart: unless-stopped
+    restart: "no"
+    profiles: ["on-demand"]
 
     environment:
       - PUID=1000
@@ -344,6 +351,7 @@ services:
 
     labels:
       - "dashboard.category=tools"
+      - "dashboard.on-demand=true"
 
       - "traefik.enable=true"
       - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"

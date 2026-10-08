@@ -77,7 +77,7 @@ Contexte à garder en tête :
 
 ### Faire de la place
 
-- [ ] **Retirer Organizr et Glance**, qui font maintenant double emploi avec le dashboard Nuxt. Ça libère de la RAM.
+- [x] **Organizr et Glance à la demande** : ils font double emploi avec le dashboard Nuxt et ne démarrent plus automatiquement (profil `on-demand`, à lancer depuis la page Services).
 
 ## Images à ajouter
 
