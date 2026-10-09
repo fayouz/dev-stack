@@ -6,6 +6,7 @@ export interface DockerContainer {
   Status: string
   Created: number
   Labels: Record<string, string>
+  Ports?: Array<{ IP?: string, PrivatePort: number, PublicPort?: number, Type: string }>
 }
 
 // Arrêter ces conteneurs couperait l'accès au dashboard lui-même
@@ -43,4 +44,13 @@ export const containersListedAt = () => cache?.at ?? null
 
 export function containerName(container: DockerContainer) {
   return container.Names[0]?.replace(/^\//, '') ?? container.Id.slice(0, 12)
+}
+
+/** Ports publiés sur l'hôte, sans les doublons IPv4 / IPv6 */
+export function publishedPorts(container: DockerContainer) {
+  const ports = new Map<string, { host: number, container: number, type: string }>()
+  for (const p of container.Ports ?? []) {
+    if (p.PublicPort) ports.set(`${p.PublicPort}/${p.Type}`, { host: p.PublicPort, container: p.PrivatePort, type: p.Type })
+  }
+  return [...ports.values()].sort((a, b) => a.host - b.host)
 }

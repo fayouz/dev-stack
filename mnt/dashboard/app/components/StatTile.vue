@@ -14,12 +14,12 @@ defineProps<{
 
 <template>
   <ULink :to="to" class="block" :class="{ 'pointer-events-none': !to }">
-    <UCard class="h-full transition-colors hover:bg-elevated/40" :ui="{ body: 'p-4 sm:p-4' }">
-      <div class="flex items-start justify-between gap-2">
-        <p class="text-sm text-muted">{{ label }}</p>
+    <UCard class="h-full transition-colors hover:bg-elevated/40" :ui="{ body: 'px-3 py-2 sm:px-3 sm:py-2' }">
+      <div class="flex items-center justify-between gap-2">
+        <p class="truncate text-xs text-muted">{{ label }}</p>
         <UIcon
           :name="icon"
-          class="size-5 shrink-0"
+          class="size-4 shrink-0"
           :class="{
             'text-success': status === 'success',
             'text-warning': status === 'warning',
@@ -28,8 +28,8 @@ defineProps<{
           }"
         />
       </div>
-      <p class="mt-1 text-2xl font-semibold text-highlighted">{{ value }}</p>
-      <p v-if="hint" class="mt-1 truncate text-xs text-muted">{{ hint }}</p>
+      <p class="truncate text-xl/7 font-semibold text-highlighted">{{ value }}</p>
+      <p v-if="hint" class="truncate text-xs text-muted" :title="hint">{{ hint }}</p>
     </UCard>
   </ULink>
 </template>

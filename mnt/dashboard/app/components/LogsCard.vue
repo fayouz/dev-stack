@@ -31,17 +31,35 @@ const viewport = ref<HTMLElement>()
 let source: EventSource | undefined
 let nextId = 0
 
+// Pause globale : les lignes reçues sont mises de côté et affichées à la reprise
+const paused = useRefreshPaused()
+const held = ref<LogLine[]>([])
+function append(newLines: LogLine[]) {
+  lines.value.push(...newLines)
+  if (lines.value.length > MAX_LINES) lines.value.splice(0, lines.value.length - MAX_LINES)
+}
+watch(paused, (value) => {
+  if (value || !held.value.length) return
+  append(held.value)
+  held.value = []
+})
+
 function connect(name: string) {
   source?.close()
   lines.value = []
+  held.value = []
   if (!name) return
   status.value = 'connecting'
   source = new EventSource(`/api/logs/${encodeURIComponent(name)}`)
   source.onopen = () => { status.value = 'live' }
   source.onmessage = (message) => {
     const line = JSON.parse(message.data) as Omit<LogLine, 'id'>
-    lines.value.push({ ...line, id: nextId++ })
-    if (lines.value.length > MAX_LINES) lines.value.splice(0, lines.value.length - MAX_LINES)
+    if (paused.value) {
+      held.value.push({ ...line, id: nextId++ })
+      if (held.value.length > MAX_LINES) held.value.splice(0, held.value.length - MAX_LINES)
+    } else {
+      append([{ ...line, id: nextId++ }])
+    }
   }
   // Fin de flux (conteneur arrêté) : on ne se reconnecte pas en boucle
   source.onerror = () => {
@@ -100,6 +118,9 @@ function levelClass(message: string) {
           >
             <span v-if="status === 'live'" class="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-success" />
             {{ status === 'live' ? 'en direct' : status === 'connecting' ? 'connexion…' : 'arrêté' }}
+          </UBadge>
+          <UBadge v-if="paused" color="warning" variant="subtle" size="sm" icon="i-lucide-pause">
+            figé{{ held.length ? ` · ${held.length} en attente` : '' }}
           </UBadge>
         </div>
         <div class="flex flex-wrap items-center gap-2">

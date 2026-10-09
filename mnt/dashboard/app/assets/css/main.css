@@ -18,6 +18,7 @@
   --viz-critical: #d03b3b;
   /* Pistes des jauges : pas proche du fond dans la rampe de chaque teinte */
   --viz-1-track: #cde2fb;
+  --viz-good-track: #cdeccd;
   --viz-warning-track: #fdecc4;
   --viz-critical-track: #f6d4d4;
 }
@@ -46,6 +47,7 @@
   --viz-grid: #2c2c2a;
   --viz-axis: #383835;
   --viz-1-track: #0d366b;
+  --viz-good-track: #123d12;
   --viz-warning-track: #4a3712;
   --viz-critical-track: #4a1d1d;
 }

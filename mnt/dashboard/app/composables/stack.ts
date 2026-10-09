@@ -33,3 +33,18 @@ export async function postAction(url: string) {
 }
 
 export const useLastRefresh = () => useState('lastRefresh', () => new Date())
+
+// Pause globale de l'actualisation automatique (timer du layout, courbes, logs)
+export const useRefreshPaused = () => useState('refreshPaused', () => false)
+
+/** Problèmes de toutes les catégories suivies : stack et outils arrêtés ou malades, applications malades */
+export function useProblems() {
+  const { data } = useContainers()
+  return computed(() => (data.value?.containers ?? []).filter((c) => {
+    if (c.category === 'stack' || c.category === 'tools') {
+      return !(c.onDemand && c.state !== 'running') && (c.state !== 'running' || c.health === 'unhealthy')
+    }
+    // Une application arrêtée l'est souvent volontairement : seuls les états anormaux comptent
+    return c.category === 'app' && (c.health === 'unhealthy' || c.state === 'restarting' || c.state === 'dead')
+  }))
+}

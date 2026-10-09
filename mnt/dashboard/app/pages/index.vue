@@ -10,6 +10,7 @@ const RANGES = [
 ]
 const range = ref('live')
 const paused = ref(false)
+const globalPaused = useRefreshPaused()
 const isLive = computed(() => range.value === 'live')
 
 const { data: containers } = await useContainers()
@@ -24,6 +25,7 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   timer = setInterval(() => {
     tick++
+    if (globalPaused.value) return
     if (isLive.value ? !paused.value : tick % 6 === 0) refreshNuxtData('history')
   }, 5_000)
 })
@@ -45,7 +47,8 @@ const tiles = computed(() => MAIN_CATEGORIES.map((key) => {
 }))
 // Stack et outils : doivent toujours tourner. Les applications s'arrêtent souvent volontairement.
 const platform = computed(() => all.value.filter(c => c.category === 'stack' || c.category === 'tools'))
-const problems = computed(() => platform.value.filter(c => !(c.onDemand && c.state !== 'running') && (c.state !== 'running' || c.health === 'unhealthy')))
+// Problèmes de toutes les catégories (applications malades comprises), comme la cloche de la barre du haut
+const problems = useProblems()
 
 const lastBackup = computed(() => backups.value?.available ? backups.value.lastRun : null)
 
@@ -106,14 +109,15 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
         <template #right>
           <UButton
             v-if="isLive"
-            :icon="paused ? 'i-lucide-play' : 'i-lucide-pause'"
-            :label="paused ? 'En pause' : 'En direct'"
-            :color="paused ? 'neutral' : 'success'"
+            :icon="paused || globalPaused ? 'i-lucide-play' : 'i-lucide-pause'"
+            :label="globalPaused ? 'Actualisation en pause' : paused ? 'En pause' : 'En direct'"
+            :color="paused || globalPaused ? 'neutral' : 'success'"
+            :disabled="globalPaused"
             variant="soft"
             size="xs"
             @click="paused = !paused"
           >
-            <template v-if="!paused" #leading>
+            <template v-if="!paused && !globalPaused" #leading>
               <span class="relative flex size-2">
                 <span class="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
                 <span class="relative inline-flex size-2 rounded-full bg-success" />
@@ -128,7 +132,7 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
       <StaleNotice />
 
       <!-- Indicateurs -->
-      <div class="grid grid-cols-2 gap-4 md:grid-cols-3 2xl:grid-cols-6">
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
         <StatTile
           v-for="tile in tiles"
           :key="tile.key"
@@ -143,8 +147,8 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
           :value="problems.length"
           :icon="problems.length ? 'i-lucide-triangle-alert' : 'i-lucide-circle-check'"
           :status="problems.length ? 'error' : 'success'"
-          :hint="problems.length ? `Stack et outils : ${problems.map(p => p.name).join(', ')}` : 'Stack et outils OK'"
-          to="/services"
+          :hint="problems.length ? problems.map(p => p.name).join(', ') : 'Stack, outils et applications OK'"
+          :to="problems.length === 1 ? { path: '/services', query: { q: problems[0]!.name } } : '/services'"
         />
         <StatTile
           label="Mises à jour"
@@ -171,12 +175,14 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
           icon="i-lucide-cpu"
           :value="host?.cpu"
           :detail="`${host?.cores ?? '—'} cœurs · charge ${host?.load1?.toFixed(2) ?? '—'}`"
+          :trend="hostData.map(p => p.cpu)"
         />
         <GaugeChart
           label="Mémoire"
           icon="i-lucide-memory-stick"
           :value="host?.memory ? 100 * host.memory.used / host.memory.total : null"
           :detail="`${formatBytes(host?.memory?.used)} / ${formatBytes(host?.memory?.total)}`"
+          :trend="hostData.map(p => p.memory)"
         />
         <GaugeChart
           label="Disque"
@@ -184,7 +190,7 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
           :value="host?.disk ? 100 * host.disk.used / host.disk.total : null"
           :detail="`${formatBytes(host?.disk?.used)} / ${formatBytes(host?.disk?.total)} · uptime ${formatDuration(host?.uptime)}`"
         />
-        <StatusDonut title="Stack et outils" :segments="serviceSegments" />
+        <StatusDonut title="Stack et outils (hors applications)" :segments="serviceSegments" />
       </div>
 
       <!-- Applications en développement -->

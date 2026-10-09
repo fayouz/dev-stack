@@ -60,6 +60,7 @@ export default defineEventHandler(async () => {
           health: health(container.Status),
           status: container.Status,
           url: publicUrl(container.Labels),
+          ports: publishedPorts(container),
           cpu: running ? cpuByName[name] ?? null : null,
           memory: running ? memoryByName[name] ?? null : null,
           stopProtected: STOP_PROTECTED.includes(name),

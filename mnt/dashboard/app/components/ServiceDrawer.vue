@@ -25,10 +25,11 @@ watch([open, tab, () => props.name], () => {
 }, { immediate: true })
 
 // Rafraîchi toutes les 30 s tant que l'onglet est affiché
+const paused = useRefreshPaused()
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   timer = setInterval(() => {
-    if (open.value && tab.value === 'activity') refresh()
+    if (!paused.value && open.value && tab.value === 'activity') refresh()
   }, 30_000)
 })
 onBeforeUnmount(() => clearInterval(timer))

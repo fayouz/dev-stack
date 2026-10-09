@@ -8,10 +8,10 @@ const lastRefresh = useLastRefresh()
 
 const all = computed(() => containers.value?.containers ?? [])
 
-// Problèmes de la stack et des outils ; les applications s'arrêtent souvent volontairement
-const problemCount = computed(() => all.value
-  .filter(c => (c.category === 'stack' || c.category === 'tools') && !(c.onDemand && c.state !== 'running') && (c.state !== 'running' || c.health === 'unhealthy'))
-  .length)
+// Problèmes de toutes les catégories (stack, outils, applications malades)
+const problems = useProblems()
+const problemCount = computed(() => problems.value.length)
+const paused = useRefreshPaused()
 
 // Vulnérabilités critiques, toutes images confondues
 const criticalCount = computed(() => vulnerabilities.value?.available
@@ -73,12 +73,13 @@ const toolLinks = computed(() => links('tools'))
 
 // Applications : un lien par projet Compose, vers la page Services filtrée
 const appProjects = computed<NavigationMenuItem[]>(() => {
-  const projects = new Map<string, { running: number, total: number }>()
+  const projects = new Map<string, { running: number, total: number, unhealthy: number }>()
   for (const c of all.value.filter(c => c.category === 'app')) {
     const key = c.project ?? 'sans projet'
-    const entry = projects.get(key) ?? { running: 0, total: 0 }
+    const entry = projects.get(key) ?? { running: 0, total: 0, unhealthy: 0 }
     entry.total++
     if (c.state === 'running') entry.running++
+    if (c.health === 'unhealthy') entry.unhealthy++
     projects.set(key, entry)
   }
   return [...projects].sort(([a], [b]) => a.localeCompare(b)).map(([name, count]) => ({
@@ -86,9 +87,24 @@ const appProjects = computed<NavigationMenuItem[]>(() => {
     icon: 'i-lucide-app-window',
     to: { path: '/services', query: { category: 'app', project: name } },
     exactQuery: true,
-    badge: { label: `${count.running}/${count.total}`, color: 'neutral', variant: 'outline' },
+    slot: 'project' as const,
+    // Badge cliquable : filtre la liste sur les conteneurs en cause
+    badge: {
+      label: `${count.running}/${count.total}`,
+      color: count.unhealthy ? 'error' : count.running < count.total ? 'warning' : 'neutral',
+      variant: count.unhealthy || count.running < count.total ? 'subtle' : 'outline',
+    },
+    state: count.unhealthy ? 'unhealthy' : count.running < count.total ? 'stopped' : 'all',
   }))
 })
+
+// Le slot personnalisé ne connaît pas le type des éléments : on le rétablit ici
+type ProjectItem = NavigationMenuItem & { state: string }
+const asProject = (item: unknown) => item as ProjectItem
+
+function filterProject(item: ProjectItem) {
+  navigateTo({ path: '/services', query: { category: 'app', project: item.label, state: item.state } })
+}
 
 // Menu secondaire : une section repliable par catégorie
 const sections = computed<NavigationMenuItem[]>(() => [
@@ -124,6 +140,7 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   timer = setInterval(async () => {
     tick++
+    if (paused.value) return
     await refreshNuxtData(tick % 6 === 0 ? ALL_REFRESH : FAST_REFRESH)
     lastRefresh.value = new Date()
   }, FAST_REFRESH_MS)
@@ -152,13 +169,27 @@ onBeforeUnmount(() => clearInterval(timer))
         <UNavigationMenu :items="navigation" :collapsed="collapsed" orientation="vertical" tooltip />
 
         <USeparator />
-        <UNavigationMenu :items="sections" :collapsed="collapsed" orientation="vertical" tooltip popover />
+        <UNavigationMenu :items="sections" :collapsed="collapsed" orientation="vertical" tooltip popover>
+          <template #project-trailing="{ item }">
+            <UBadge
+              v-bind="asProject(item).badge as object"
+              size="sm"
+              role="button"
+              tabindex="0"
+              class="cursor-pointer tabular-nums hover:ring-2 hover:ring-primary/50"
+              :title="asProject(item).state === 'all' ? 'Voir les conteneurs' : asProject(item).state === 'unhealthy' ? 'Voir les conteneurs malades' : 'Voir les conteneurs arrêtés'"
+              @click.prevent.stop="filterProject(asProject(item))"
+              @keydown.enter.prevent.stop="filterProject(asProject(item))"
+            />
+          </template>
+        </UNavigationMenu>
       </template>
 
       <template #footer="{ collapsed }">
         <div class="flex w-full items-center justify-between gap-2" :class="{ 'flex-col': collapsed }">
           <span v-if="!collapsed" class="truncate text-xs text-muted">
-            Actualisé à {{ lastRefresh.toLocaleTimeString('fr-FR') }}
+            <template v-if="paused"><UIcon name="i-lucide-pause" class="text-warning" /> Actualisation en pause</template>
+            <template v-else>Actualisé à {{ lastRefresh.toLocaleTimeString('fr-FR') }}</template>
           </span>
           <UColorModeButton />
         </div>
