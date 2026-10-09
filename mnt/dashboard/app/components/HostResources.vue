@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Ressources de l'hôte : une ligne par ressource (barre linéaire + valeur + détail),
-// avec la tendance des 15 dernières minutes pour le CPU et la mémoire.
+// Ressources de l'hôte : une jauge en demi-cercle par ressource, avec son détail
+// et la tendance des 15 dernières minutes pour le CPU et la mémoire.
 const { data: host } = await useHost()
 // Fenêtre fixe de 15 min, indépendante du sélecteur de période des courbes
 const { data: trend } = await useFetch('/api/history', { key: 'history-15m', query: { range: '15m' } })
@@ -69,39 +69,15 @@ const rows = computed(() => {
       <UIcon name="i-lucide-unplug" /> Prometheus injoignable : métriques indisponibles
     </p>
 
-    <ul v-else class="flex flex-col divide-y divide-default">
-      <li v-for="row in rows" :key="row.key" class="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0">
-        <div class="flex items-center justify-between gap-2">
-          <span class="flex items-center gap-1.5 text-sm text-default">
-            <UIcon :name="row.icon" class="text-muted" aria-hidden="true" /> {{ row.label }}
-          </span>
-          <span class="flex items-center gap-2">
-            <UBadge v-if="row.level.badge" :color="row.level.badge" variant="subtle" size="sm" :icon="row.level.icon!" :label="row.level.text!" />
-            <span class="text-sm font-semibold text-highlighted tabular-nums">{{ formatPercent(row.value) }}</span>
-          </span>
-        </div>
-
-        <!-- Barre linéaire ; repère discret à 80 % (seuil « élevé ») -->
-        <div
-          class="relative h-2 overflow-hidden rounded-full bg-accented"
-          role="meter"
-          :aria-label="row.label"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          :aria-valuenow="row.value != null ? Math.round(row.value) : undefined"
-          :aria-valuetext="`${formatPercent(row.value)}${row.level.text ? ` (${row.level.text})` : ''}`"
-        >
-          <div
-            class="h-full rounded-full transition-[width] duration-500 ease-out"
-            :style="{ width: `${Math.min(100, Math.max(0, row.value ?? 0))}%`, background: row.level.color }"
-          />
-          <span class="absolute inset-y-0 left-[80%] w-0.5 bg-default" aria-hidden="true" />
-        </div>
-
-        <div class="flex min-h-5 items-center justify-between gap-2 text-xs text-muted">
-          <span class="truncate">{{ row.detail }}</span>
-          <Sparkline v-if="row.trend.length > 1" :values="row.trend" :label="row.label" />
-        </div>
+    <ul v-else class="grid grid-cols-3 gap-3">
+      <li v-for="row in rows" :key="row.key" class="flex min-w-0 flex-col items-center gap-1 text-center">
+        <span class="flex items-center gap-1.5 text-sm text-default">
+          <UIcon :name="row.icon" class="text-muted" aria-hidden="true" /> {{ row.label }}
+        </span>
+        <HalfGauge :label="row.label" :value="row.value" :color="row.level.color" class="w-full" />
+        <UBadge v-if="row.level.badge" :color="row.level.badge" variant="subtle" size="sm" :icon="row.level.icon!" :label="row.level.text!" />
+        <span class="text-xs text-muted">{{ row.detail }}</span>
+        <Sparkline v-if="row.trend.length > 1" :values="row.trend" :label="row.label" />
       </li>
     </ul>
   </UCard>
