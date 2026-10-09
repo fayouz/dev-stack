@@ -13,6 +13,22 @@ async function refresh() {
   refreshing.value = false
 }
 
+// Thème : clair, sombre ou celui du système (préférence mémorisée par @nuxtjs/color-mode)
+const colorMode = useColorMode()
+const THEMES = [
+  { value: 'light', label: 'Clair', icon: 'i-lucide-sun' },
+  { value: 'dark', label: 'Sombre', icon: 'i-lucide-moon' },
+  { value: 'system', label: 'Système', icon: 'i-lucide-monitor' },
+]
+const theme = computed(() => THEMES.find(t => t.value === colorMode.preference) ?? THEMES[2]!)
+const themeItems = computed(() => THEMES.map(t => ({
+  label: t.label,
+  icon: t.icon,
+  type: 'checkbox' as const,
+  checked: colorMode.preference === t.value,
+  onSelect: () => { colorMode.preference = t.value },
+})))
+
 function reason(c: typeof problems.value[number]) {
   if (c.health === 'unhealthy') return 'malade (healthcheck en échec)'
   if (c.state === 'restarting') return 'redémarre en boucle'
@@ -60,6 +76,16 @@ function reason(c: typeof problems.value[number]) {
           </div>
         </template>
       </UPopover>
+
+      <UDropdownMenu :items="themeItems" :content="{ align: 'end' }">
+        <UButton
+          :icon="theme.icon"
+          color="neutral"
+          variant="ghost"
+          :aria-label="`Thème : ${theme.label}. Changer de thème`"
+          :title="`Thème : ${theme.label}`"
+        />
+      </UDropdownMenu>
 
       <UButton
         :icon="paused ? 'i-lucide-play' : 'i-lucide-pause'"

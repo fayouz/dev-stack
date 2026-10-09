@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { RouteLocationRaw } from 'vue-router'
+
 useHead({ title: 'Vue d\'ensemble' })
 
 const RANGES = [
@@ -14,9 +16,7 @@ const globalPaused = useRefreshPaused()
 const isLive = computed(() => range.value === 'live')
 
 const { data: containers } = await useContainers()
-const { data: host } = await useHost()
 const { data: updates } = await useUpdates()
-const { data: backups } = await useBackups()
 const { data: history, status: historyStatus } = await useHistory(range)
 
 // Temps réel : courbes rafraîchies toutes les 5 s (sauf pause) ; autres fenêtres toutes les 30 s
@@ -31,69 +31,124 @@ onMounted(() => {
 })
 onBeforeUnmount(() => clearInterval(timer))
 
-// --- Indicateurs par catégorie
+// --- Filtre de la liste des conteneurs, piloté par les indicateurs (nouveau clic : retiré)
+const filter = ref<ContainerFilter | null>(null)
+const toggleFilter = (key: ContainerFilter) => { filter.value = filter.value === key ? null : key }
+
+// --- Indicateurs
 const all = computed(() => containers.value?.containers ?? [])
-const inCategory = (category: Category) => all.value.filter(c => c.category === category)
-const tiles = computed(() => MAIN_CATEGORIES.map((key) => {
-  const list = inCategory(key)
-  const projects = new Set(list.map(c => c.project ?? 'sans projet')).size
-  return {
-    key,
-    ...CATEGORIES[key],
-    running: list.filter(c => c.state === 'running').length,
-    total: list.length,
-    hint: key === 'app' ? `${projects} projet${projects > 1 ? 's' : ''}` : CATEGORIES[key].description,
-  }
-}))
-// Stack et outils : doivent toujours tourner. Les applications s'arrêtent souvent volontairement.
-const platform = computed(() => all.value.filter(c => c.category === 'stack' || c.category === 'tools'))
 // Problèmes de toutes les catégories (applications malades comprises), comme la cloche de la barre du haut
 const problems = useProblems()
+const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`
 
-const lastBackup = computed(() => backups.value?.available ? backups.value.lastRun : null)
+interface Tile {
+  key: ContainerFilter
+  label: string
+  value: string | number
+  total?: number
+  icon: string
+  hint: string
+  status: 'success' | 'warning' | 'error' | 'neutral'
+  link: { to: RouteLocationRaw, label: string }
+}
 
-const serviceSegments = computed(() => {
-  const count = (test: (c: typeof platform.value[number]) => boolean) => platform.value.filter(test).length
+const tiles = computed<Tile[]>(() => {
+  const category = (key: Exclude<Category, 'other'>): Tile => {
+    const list = all.value.filter(c => c.category === key)
+    const running = list.filter(c => c.state === 'running').length
+    const failing = problems.value.filter(c => c.category === key).length
+    const onDemand = list.filter(c => c.onDemand && c.state !== 'running').length
+    let hint: string
+    let status: Tile['status']
+    if (key === 'app') {
+      // Une application arrêtée l'est souvent volontairement : pas de statut, sauf en cas de panne
+      const projects = new Set(list.map(c => c.project ?? 'sans projet')).size
+      hint = failing ? `${plural(failing, 'conteneur')} en erreur` : plural(projects, 'projet')
+      status = failing ? 'error' : 'neutral'
+    } else {
+      hint = failing
+        ? `${plural(failing, 'conteneur')} en erreur`
+        : onDemand ? `Tous actifs · ${onDemand} à la demande` : 'Tous actifs'
+      status = failing ? 'error' : list.length ? 'success' : 'neutral'
+    }
+    return {
+      key,
+      label: CATEGORIES[key].label,
+      value: running,
+      total: list.length,
+      icon: CATEGORIES[key].icon,
+      hint,
+      status,
+      link: { to: { path: '/services', query: { category: key } }, label: `Ouvrir ${CATEGORIES[key].label} dans la page Services` },
+    }
+  }
+  const pending = updates.value?.updates.length
   return [
-    { key: 'ok', label: 'Actifs', color: 'var(--viz-good)', icon: 'i-lucide-circle-check', count: count(c => c.state === 'running' && !c.health?.match(/unhealthy|starting/)) },
-    { key: 'starting', label: 'Démarrage', color: 'var(--viz-warning)', icon: 'i-lucide-loader', count: count(c => c.state === 'restarting' || c.health === 'starting') },
-    { key: 'unhealthy', label: 'Malades', color: 'var(--viz-critical)', icon: 'i-lucide-circle-x', count: count(c => c.state === 'running' && c.health === 'unhealthy') },
-    { key: 'stopped', label: 'Arrêtés', color: 'var(--viz-stopped)', icon: 'i-lucide-circle-stop', count: count(c => !['running', 'restarting'].includes(c.state)) },
+    ...(['stack', 'tools', 'app'] as const).map(category),
+    {
+      key: 'problems',
+      label: 'Problèmes',
+      value: problems.value.length,
+      icon: problems.value.length ? 'i-lucide-triangle-alert' : 'i-lucide-circle-check',
+      hint: problems.value.length ? problems.value.map(p => p.name).join(', ') : 'Tout fonctionne',
+      status: problems.value.length ? 'error' : 'success',
+      link: { to: '/services', label: 'Ouvrir la page Services' },
+    },
+    {
+      key: 'updates',
+      label: 'Mises à jour',
+      value: pending ?? '—',
+      icon: 'i-lucide-package',
+      hint: updates.value ? `${updates.value.watched} conteneurs surveillés` : 'WUD injoignable',
+      status: pending ? 'warning' : updates.value ? 'success' : 'neutral',
+      link: { to: '/mises-a-jour', label: 'Ouvrir la page Mises à jour' },
+    },
   ]
 })
 
-// --- Courbes
-const timeLabel = (t: number) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+// --- Courbes : un seul axe de temps pour les trois graphiques empilés
+const hoverTime = ref<number | null>(null)
 
-const hostData = computed(() => (history.value?.cpu ?? []).map(([time, cpu], i) => ({
-  time,
-  cpu,
-  memory: history.value?.memory[i]?.[1] ?? 0,
-})))
-const hostTick = (i: number) => { const p = hostData.value[i]; return p ? timeLabel(p.time) : '' }
+const domain = computed<[number, number]>(() => {
+  const h = history.value
+  const series = [h?.cpu ?? [], h?.memory ?? [], ...(h?.containers ?? []).map(c => c.points)].filter(s => s.length)
+  if (!series.length) return [0, 1]
+  return [Math.min(...series.map(s => s[0]![0])), Math.max(...series.map(s => s.at(-1)![0]))]
+})
+const hasData = computed(() => !!history.value?.cpu.length)
+
+const hostCpu = computed<TimeSeries[]>(() => [{ key: 'cpu', name: 'CPU', color: 'var(--viz-1)', points: history.value?.cpu ?? [] }])
+const hostMemory = computed<TimeSeries[]>(() => [{ key: 'memory', name: 'Mémoire', color: 'var(--viz-1)', points: history.value?.memory ?? [] }])
 
 // Couleur fixée par conteneur (ordre alphabétique renvoyé par l'API), jamais par rang
 const SERIES_COLORS = ['var(--viz-1)', 'var(--viz-2)', 'var(--viz-3)', 'var(--viz-4)']
 const containerSeries = computed(() => (history.value?.containers ?? []).map((c, i) => ({
-  ...c,
+  key: c.name,
+  name: c.name,
   color: SERIES_COLORS[i % SERIES_COLORS.length]!,
+  points: c.points,
   current: c.points.at(-1)?.[1] ?? null,
 })))
-const containerCategories = computed(() => Object.fromEntries(containerSeries.value.map(c => [c.name, { name: c.name, color: c.color }])))
-const containerData = computed(() => {
-  const base = containerSeries.value.find(c => c.points.length)?.points ?? []
-  return base.map(([time], i) => ({
-    time,
-    ...Object.fromEntries(containerSeries.value.map(c => [c.name, c.points[i]?.[1] ?? 0])),
-  }))
+// Échelle fixe 0–100 % (100 % = 1 cœur) pour comparer les fenêtres entre elles ;
+// étendue par paliers de 50 si un conteneur dépasse un cœur
+const containerMax = computed(() => {
+  const max = Math.max(0, ...containerSeries.value.flatMap(s => s.points.map(p => p[1])))
+  return Math.max(100, Math.ceil(max / 50) * 50)
 })
-const containerTick = (i: number) => { const p = containerData.value[i]; return p ? timeLabel(p.time) : '' }
+
+// Mise en avant d'une série : survol (courbe, étiquette, légende) ou épinglage au clic sur la légende
+const hovered = ref<string | null>(null)
+const pinned = ref<string | null>(null)
+const highlight = computed({
+  get: () => hovered.value ?? pinned.value,
+  set: (value: string | null) => { hovered.value = value },
+})
 
 // --- Classement mémoire
-const topMemory = computed(() => (containers.value?.containers ?? [])
+const topMemory = computed(() => all.value
   .filter(c => c.memory != null)
   .sort((a, b) => b.memory! - a.memory!)
-  .slice(0, 8)
+  .slice(0, 6)
   .map(c => ({ label: c.name, value: c.memory!, display: formatBytes(c.memory) })))
 </script>
 
@@ -101,185 +156,148 @@ const topMemory = computed(() => (containers.value?.containers ?? [])
   <UDashboardPanel id="overview">
     <template #header>
       <PageNavbar title="Vue d'ensemble" />
-
-      <UDashboardToolbar>
-        <template #left>
-          <UTabs v-model="range" :items="RANGES" :content="false" size="xs" color="neutral" />
-        </template>
-        <template #right>
-          <UButton
-            v-if="isLive"
-            :icon="paused || globalPaused ? 'i-lucide-play' : 'i-lucide-pause'"
-            :label="globalPaused ? 'Actualisation en pause' : paused ? 'En pause' : 'En direct'"
-            :color="paused || globalPaused ? 'neutral' : 'success'"
-            :disabled="globalPaused"
-            variant="soft"
-            size="xs"
-            @click="paused = !paused"
-          >
-            <template v-if="!paused && !globalPaused" #leading>
-              <span class="relative flex size-2">
-                <span class="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
-                <span class="relative inline-flex size-2 rounded-full bg-success" />
-              </span>
-            </template>
-          </UButton>
-        </template>
-      </UDashboardToolbar>
     </template>
 
     <template #body>
       <StaleNotice />
 
-      <!-- Indicateurs -->
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
+      <!-- Indicateurs : un clic filtre la liste des conteneurs ci-dessous -->
+      <section aria-label="Indicateurs" class="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <StatTile
           v-for="tile in tiles"
           :key="tile.key"
           :label="tile.label"
-          :value="`${tile.running} / ${tile.total}`"
+          :value="tile.value"
+          :total="tile.total"
           :icon="tile.icon"
           :hint="tile.hint"
-          :to="{ path: '/services', query: { category: tile.key } }"
+          :status="tile.status"
+          :link="tile.link"
+          :pressed="filter === tile.key"
+          @toggle="toggleFilter(tile.key)"
         />
-        <StatTile
-          label="Problèmes"
-          :value="problems.length"
-          :icon="problems.length ? 'i-lucide-triangle-alert' : 'i-lucide-circle-check'"
-          :status="problems.length ? 'error' : 'success'"
-          :hint="problems.length ? problems.map(p => p.name).join(', ') : 'Stack, outils et applications OK'"
-          :to="problems.length === 1 ? { path: '/services', query: { q: problems[0]!.name } } : '/services'"
-        />
-        <StatTile
-          label="Mises à jour"
-          :value="updates?.updates.length ?? '—'"
-          icon="i-lucide-package"
-          :status="updates?.updates.length ? 'warning' : 'success'"
-          :hint="updates ? `${updates.watched} conteneurs surveillés` : 'WUD injoignable'"
-          to="/mises-a-jour"
-        />
-        <StatTile
-          label="Dernière sauvegarde"
-          :value="lastBackup && lastBackup.result !== 'none' ? formatRelative(lastBackup.at) : '—'"
-          :icon="lastBackup?.result === 'error' ? 'i-lucide-circle-x' : 'i-lucide-archive'"
-          :status="lastBackup?.result === 'error' ? 'error' : lastBackup?.result === 'ok' ? 'success' : 'neutral'"
-          :hint="lastBackup?.result === 'error' ? 'Échec' : lastBackup?.result === 'ok' ? 'Réussie' : 'Aucune sauvegarde'"
-          to="/sauvegardes"
-        />
+      </section>
+
+      <!-- Conteneurs (2/3) et ressources de l'hôte (1/3) -->
+      <div class="grid shrink-0 items-start gap-4 xl:grid-cols-3">
+        <div class="min-w-0 xl:col-span-2">
+          <ContainerList :filter="filter" @clear-filter="filter = null" />
+        </div>
+
+        <div class="flex min-w-0 flex-col gap-4">
+          <HostResources />
+          <UCard :ui="{ header: 'px-4 py-3 sm:px-4', body: 'px-4 py-3 sm:px-4 sm:py-3' }">
+            <template #header>
+              <h3 class="font-semibold">Mémoire par conteneur</h3>
+            </template>
+            <BarList :items="topMemory" />
+          </UCard>
+        </div>
       </div>
 
-      <!-- Jauges -->
-      <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <GaugeChart
-          label="CPU"
-          icon="i-lucide-cpu"
-          :value="host?.cpu"
-          :detail="`${host?.cores ?? '—'} cœurs · charge ${host?.load1?.toFixed(2) ?? '—'}`"
-          :trend="hostData.map(p => p.cpu)"
-        />
-        <GaugeChart
-          label="Mémoire"
-          icon="i-lucide-memory-stick"
-          :value="host?.memory ? 100 * host.memory.used / host.memory.total : null"
-          :detail="`${formatBytes(host?.memory?.used)} / ${formatBytes(host?.memory?.total)}`"
-          :trend="hostData.map(p => p.memory)"
-        />
-        <GaugeChart
-          label="Disque"
-          icon="i-lucide-hard-drive"
-          :value="host?.disk ? 100 * host.disk.used / host.disk.total : null"
-          :detail="`${formatBytes(host?.disk?.used)} / ${formatBytes(host?.disk?.total)} · uptime ${formatDuration(host?.uptime)}`"
-        />
-        <StatusDonut title="Stack et outils (hors applications)" :segments="serviceSegments" />
-      </div>
-
-      <!-- Applications en développement -->
-      <ApplicationsCard />
-
-      <!-- Courbes temps réel de l'hôte -->
-      <div class="grid gap-4 xl:grid-cols-2">
-        <UCard>
-          <template #header>
-            <div class="flex items-baseline justify-between">
-              <h3 class="font-semibold">CPU de l'hôte</h3>
-              <span class="text-sm text-muted">{{ formatPercent(hostData.at(-1)?.cpu) }}</span>
+      <!-- Activité : trois graphiques empilés sur le même axe de temps -->
+      <UCard as="section" aria-labelledby="activity-title" class="shrink-0">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 id="activity-title" class="font-semibold">Activité</h3>
+            <div class="flex flex-wrap items-center gap-2">
+              <UTabs v-model="range" :items="RANGES" :content="false" size="xs" color="neutral" aria-label="Période des courbes" />
+              <UButton
+                v-if="isLive"
+                :icon="paused || globalPaused ? 'i-lucide-play' : 'i-lucide-pause'"
+                :label="globalPaused ? 'Actualisation en pause' : paused ? 'En pause' : 'En direct'"
+                :color="paused || globalPaused ? 'neutral' : 'success'"
+                :disabled="globalPaused"
+                :aria-pressed="paused"
+                variant="soft"
+                size="xs"
+                @click="paused = !paused"
+              >
+                <template v-if="!paused && !globalPaused" #leading>
+                  <span class="relative flex size-2" aria-hidden="true">
+                    <span class="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
+                    <span class="relative inline-flex size-2 rounded-full bg-success" />
+                  </span>
+                </template>
+              </UButton>
             </div>
-          </template>
-          <AreaChart
-            :data="hostData"
-            :categories="{ cpu: { name: 'CPU', color: 'var(--viz-1)' } }"
-            :height="200"
-            :y-domain="[0, 100]"
-            :x-formatter="hostTick"
-            :y-formatter="(v: number) => `${v} %`"
-            :x-num-ticks="5"
-            :y-num-ticks="4"
-            :duration="0"
-            hide-legend
-            :class="{ 'opacity-60': historyStatus === 'pending' }"
-          />
-        </UCard>
-        <UCard>
-          <template #header>
-            <div class="flex items-baseline justify-between">
-              <h3 class="font-semibold">Mémoire de l'hôte</h3>
-              <span class="text-sm text-muted">{{ formatPercent(hostData.at(-1)?.memory) }}</span>
-            </div>
-          </template>
-          <AreaChart
-            :data="hostData"
-            :categories="{ memory: { name: 'Mémoire', color: 'var(--viz-1)' } }"
-            :height="200"
-            :y-domain="[0, 100]"
-            :x-formatter="hostTick"
-            :y-formatter="(v: number) => `${v} %`"
-            :x-num-ticks="5"
-            :y-num-ticks="4"
-            :duration="0"
-            hide-legend
-          />
-        </UCard>
-      </div>
+          </div>
+        </template>
 
-      <!-- Conteneurs -->
-      <div class="grid gap-4 xl:grid-cols-3">
-        <UCard class="xl:col-span-2">
-          <template #header>
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <h3 class="font-semibold">CPU des conteneurs les plus actifs</h3>
-              <!-- Légende avec valeur courante : identifie chaque série sans passer par la couleur seule -->
-              <ul class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                <li v-for="s in containerSeries" :key="s.name" class="flex items-center gap-1.5">
-                  <span class="h-0.5 w-3 rounded" :style="{ background: s.color }" />
-                  <span class="text-default">{{ s.name }}</span>
-                  <span class="font-semibold text-highlighted tabular-nums">{{ formatPercent(s.current) }}</span>
+        <div v-if="hasData" class="flex flex-col gap-3">
+          <div>
+            <h4 class="mb-1 text-xs font-medium text-muted">CPU de l'hôte</h4>
+            <TimeChart
+              v-model:hover-time="hoverTime"
+              label="CPU de l'hôte"
+              :series="hostCpu"
+              :domain="domain"
+              :height="90"
+              :pending="historyStatus === 'pending'"
+              area
+            />
+          </div>
+          <div>
+            <h4 class="mb-1 text-xs font-medium text-muted">Mémoire de l'hôte</h4>
+            <TimeChart
+              v-model:hover-time="hoverTime"
+              label="Mémoire de l'hôte"
+              :series="hostMemory"
+              :domain="domain"
+              :height="90"
+              :show-x-axis="!containerSeries.length"
+              :pending="historyStatus === 'pending'"
+              area
+            />
+          </div>
+          <div>
+            <div class="mb-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+              <h4 class="text-xs font-medium text-muted">
+                CPU des conteneurs les plus actifs <span class="font-normal">(100 % = 1 cœur)</span>
+              </h4>
+              <!-- Légende : survol ou focus met la série en avant, clic l'épingle -->
+              <ul class="flex flex-wrap gap-1 text-xs">
+                <li v-for="s in containerSeries" :key="s.key">
+                  <button
+                    type="button"
+                    class="flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-opacity hover:bg-elevated focus-visible:outline-2 focus-visible:outline-primary"
+                    :class="{ 'opacity-50': highlight && highlight !== s.key, 'bg-elevated': pinned === s.key }"
+                    :aria-pressed="pinned === s.key"
+                    :aria-label="`${s.name} : ${formatPercent(s.current)}. Mettre en avant`"
+                    @mouseenter="hovered = s.key"
+                    @mouseleave="hovered = null"
+                    @focus="hovered = s.key"
+                    @blur="hovered = null"
+                    @click="pinned = pinned === s.key ? null : s.key"
+                  >
+                    <span class="h-0.5 w-3 rounded" :style="{ background: s.color }" />
+                    <span class="text-default">{{ s.name }}</span>
+                    <span class="font-semibold text-highlighted tabular-nums">{{ formatPercent(s.current) }}</span>
+                  </button>
                 </li>
               </ul>
             </div>
-          </template>
-          <LineChart
-            v-if="containerData.length"
-            :data="containerData"
-            :categories="containerCategories"
-            :height="220"
-            :y-domain="[0, undefined]"
-            :x-formatter="containerTick"
-            :y-formatter="(v: number) => `${v} %`"
-            :x-num-ticks="5"
-            :y-num-ticks="4"
-            :duration="0"
-            hide-legend
-          />
-          <p v-else class="text-sm text-muted">Pas encore de données.</p>
-        </UCard>
-
-        <UCard>
-          <template #header>
-            <h3 class="font-semibold">Mémoire par conteneur</h3>
-          </template>
-          <BarList :items="topMemory" />
-        </UCard>
-      </div>
+            <TimeChart
+              v-if="containerSeries.length"
+              v-model:hover-time="hoverTime"
+              v-model:highlight="highlight"
+              label="CPU des conteneurs les plus actifs"
+              :series="containerSeries"
+              :domain="domain"
+              :y-max="containerMax"
+              :height="150"
+              :pending="historyStatus === 'pending'"
+              show-x-axis
+            />
+            <p v-else class="text-sm text-muted">Aucun conteneur actif sur la période.</p>
+          </div>
+          <p class="flex items-center gap-1.5 text-xs text-muted">
+            <svg width="16" height="2" aria-hidden="true"><line x1="0" x2="16" y1="1" y2="1" stroke="var(--viz-warning)" stroke-dasharray="4 3" stroke-width="2" /></svg>
+            Seuil « élevé » à 80 %
+          </p>
+        </div>
+        <p v-else class="text-sm text-muted">Pas encore de données.</p>
+      </UCard>
 
       <!-- Logs en temps réel -->
       <LogsCard />

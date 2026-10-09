@@ -10,7 +10,7 @@ export const useHistory = (range: Ref<string>) =>
 
 export const FAST_REFRESH = ['containers', 'host']
 export const FAST_REFRESH_MS = 10_000
-export const ALL_REFRESH = [...FAST_REFRESH, 'updates', 'backups', 'vulnerabilities']
+export const ALL_REFRESH = [...FAST_REFRESH, 'updates', 'backups', 'vulnerabilities', 'history-15m']
 
 /** Rafraîchit `key` toutes les 5 s tant que `busy` est vrai (sauvegarde ou analyse en cours) */
 export function usePollWhile(busy: Ref<boolean>, key: string) {

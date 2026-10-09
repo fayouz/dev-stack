@@ -16,11 +16,6 @@
   --viz-good: #0ca30c;
   --viz-warning: #fab219;
   --viz-critical: #d03b3b;
-  /* Pistes des jauges : pas proche du fond dans la rampe de chaque teinte */
-  --viz-1-track: #cde2fb;
-  --viz-good-track: #cdeccd;
-  --viz-warning-track: #fdecc4;
-  --viz-critical-track: #f6d4d4;
 }
 
 /* Unovis (nuxt-charts) aligné sur les jetons Nuxt UI : grille et axes discrets */
@@ -40,14 +35,36 @@
 }
 
 .dark {
+  /* Palette catégorielle revalidée sur la surface sombre #121827 (CVD ΔE 8,4, contraste ≥ 3:1) */
   --viz-1: #3987e5;
   --viz-2: #d95926;
   --viz-3: #199e70;
   --viz-4: #c98500;
-  --viz-grid: #2c2c2a;
-  --viz-axis: #383835;
-  --viz-1-track: #0d366b;
-  --viz-good-track: #123d12;
-  --viz-warning-track: #4a3712;
-  --viz-critical-track: #4a1d1d;
+  --viz-grid: #1f2839;
+  --viz-axis: #364156;
+}
+
+/*
+ * Fond de page distinct des surfaces : les cartes (bg-default) se détachent du fond.
+ * Clair : inchangé (blanc). Sombre : gris profonds bleutés plutôt que du noir.
+ */
+:root {
+  --app-bg: var(--ui-bg);
+}
+
+.dark {
+  --app-bg: #0b0f19;
+  /* Surfaces : cartes, menus, modales */
+  --ui-bg: #121827;
+  --ui-bg-muted: #161d2d;
+  --ui-bg-elevated: #1b2334;
+  --ui-bg-accented: #263044;
+  /* Bordures : discrètes sur la surface, visibles sur le fond */
+  --ui-border: #242e40;
+  --ui-border-muted: #1c2535;
+  --ui-border-accented: #333e54;
+}
+
+body {
+  background-color: var(--app-bg);
 }

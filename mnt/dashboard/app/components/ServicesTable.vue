@@ -70,21 +70,10 @@ const columns: TableColumn<Service>[] = [
   { id: 'actions', header: '' },
 ]
 
-function stateBadge(service: Service) {
-  if (service.state === 'running') {
-    if (service.health === 'unhealthy') return { label: 'malade', color: 'error' as const }
-    if (service.health === 'starting') return { label: 'démarrage', color: 'warning' as const }
-    return { label: service.health === 'healthy' ? 'sain' : 'actif', color: 'success' as const }
-  }
-  if (service.state === 'restarting') return { label: 'redémarre', color: 'warning' as const }
-  if (service.state === 'paused') return { label: 'en pause', color: 'warning' as const }
-  if (service.state === 'dead') return { label: 'mort', color: 'error' as const }
-  return { label: service.onDemand ? 'à la demande' : 'arrêté', color: 'neutral' as const }
-}
+const stateBadge = containerState
 
 // Actions start / stop / restart, confirmées dans une fenêtre
 const actions = useContainerActions()
-const { pending, running } = actions
 
 // Tiroir de détail (activité, logs) du service choisi
 const drawer = ref<{ name: string, tab: 'activity' | 'logs' } | null>(null)
@@ -141,10 +130,17 @@ const drawerTab = computed({
       class="m-4"
     />
 
-    <UTable :data="services" :columns="columns" :loading="!data && !error" class="w-full">
+    <UTable
+      :data="services"
+      :columns="columns"
+      :loading="!data && !error"
+      :ui="{ tr: 'group/row hover:bg-elevated/40' }"
+      class="w-full"
+    >
       <template #name-cell="{ row }">
-        <!-- Nom cliquable en entier quand le service a une interface web -->
-        <div class="flex items-center gap-1.5">
+        <!-- Nom affiché en entier (colonne large), cliquable quand le service a une interface web -->
+        <div class="flex min-w-56 items-center gap-1.5">
+          <FavoriteToggle :name="row.original.name" class="-ml-1.5" />
           <ULink
             v-if="row.original.url"
             :to="row.original.url"
@@ -160,7 +156,7 @@ const drawerTab = computed({
             {{ row.original.ports.map(p => `:${p.host}${p.type === 'tcp' ? '' : `/${p.type}`}`).join(' ') }}
           </span>
         </div>
-        <div class="mt-0.5 flex items-center gap-1.5">
+        <div class="mt-0.5 flex items-center gap-1.5 pl-6">
           <UBadge
             v-if="category === 'all'"
             :color="CATEGORIES[row.original.category].color"
@@ -197,58 +193,12 @@ const drawerTab = computed({
       </template>
 
       <template #actions-cell="{ row }">
-        <div class="flex justify-end gap-1">
-          <UButton
-            icon="i-lucide-chart-line"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            :aria-label="`Activité de ${row.original.name}`"
-            @click="drawer = { name: row.original.name, tab: 'activity' }"
-          />
-          <UButton
-            icon="i-lucide-scroll-text"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            :aria-label="`Logs de ${row.original.name}`"
-            @click="drawer = { name: row.original.name, tab: 'logs' }"
-          />
-          <template v-if="row.original.state === 'running'">
-            <UButton
-              icon="i-lucide-rotate-cw"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              :loading="running[row.original.name] === 'restart'"
-              :disabled="!!running[row.original.name]"
-              :aria-label="`Redémarrer ${row.original.name}`"
-              @click="pending = { name: row.original.name, action: 'restart' }"
-            />
-            <UButton
-              v-if="!row.original.stopProtected"
-              icon="i-lucide-square"
-              color="error"
-              variant="ghost"
-              size="sm"
-              :loading="running[row.original.name] === 'stop'"
-              :disabled="!!running[row.original.name]"
-              :aria-label="`Arrêter ${row.original.name}`"
-              @click="pending = { name: row.original.name, action: 'stop' }"
-            />
-          </template>
-          <UButton
-            v-else
-            icon="i-lucide-play"
-            color="success"
-            variant="ghost"
-            size="sm"
-            :loading="running[row.original.name] === 'start'"
-            :disabled="!!running[row.original.name]"
-            :aria-label="`Démarrer ${row.original.name}`"
-            @click="pending = { name: row.original.name, action: 'start' }"
-          />
-        </div>
+        <ContainerQuickActions
+          :container="row.original"
+          :actions="actions"
+          activity
+          @open="(tab) => drawer = { name: row.original.name, tab }"
+        />
       </template>
     </UTable>
 
