@@ -38,6 +38,8 @@ Contexte à garder en tête :
 
 - [x] **Images mises à jour** (8 octobre) : Traefik v3.7, Portainer 2.45.2, Hoppscotch 2026.9.0, nouvelles versions d'Adminer, Glance, Mailpit et WUD. MariaDB 13 et Postgres 18 volontairement écartés (versions majeures).
 
+- [x] **MariaDB 13.0** : mise à jour via WUD le 9 octobre, `mariadb-upgrade` passé le 12 octobre après une sauvegarde fraîche.
+
 - [x] **Oracle mis en pause** : hors du démarrage automatique (profil `on-demand`), en attendant la décision.
 
 - [x] **HTTPS pour la dev-stack** (`*.dev.localhost`) : autorité locale restreinte à ce domaine (`make certs`), installée dans Windows et WSL. Redirection automatique depuis HTTP ; les autres projets (`*.localhost`) restent en HTTP.
@@ -46,7 +48,7 @@ Contexte à garder en tête :
 
 ## À régler en priorité
 
-- [ ] **Finir le passage à MariaDB 13** (appliqué via WUD le 9 octobre, la base tourne en 13.0.2) : lancer `mariadb-upgrade`, que l'image a sauté (`MARIADB_AUTO_UPGRADE` non défini). Postgres 16 → 18 de `hoppscotch-db` reste bloqué dans WUD.
+- [ ] **Postgres 16 → 18** de `hoppscotch-db` : bloqué dans WUD, à faire volontairement (dump puis restauration).
 - [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`, **en pause**) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.
   - Une copie du volume en l'état existe : `docker-master_oracle_data_copie_20260929`.
   - Décision à prendre : tenter une réparation, ou recréer la base à vide.
