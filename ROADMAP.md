@@ -46,7 +46,7 @@ Contexte à garder en tête :
 
 ## À régler en priorité
 
-- [ ] **MariaDB 12 → 13** (majeure) : à faire volontairement, après une sauvegarde fraîche, pas depuis WUD. (Postgres 16 → 18 de `hoppscotch-db` est désormais bloqué dans WUD.)
+- [ ] **Finir le passage à MariaDB 13** (appliqué via WUD le 9 octobre, la base tourne en 13.0.2) : lancer `mariadb-upgrade`, que l'image a sauté (`MARIADB_AUTO_UPGRADE` non défini). Postgres 16 → 18 de `hoppscotch-db` reste bloqué dans WUD.
 - [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`, **en pause**) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.
   - Une copie du volume en l'état existe : `docker-master_oracle_data_copie_20260929`.
   - Décision à prendre : tenter une réparation, ou recréer la base à vide.
