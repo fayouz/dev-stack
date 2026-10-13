@@ -40,7 +40,7 @@ Contexte à garder en tête :
 
 - [x] **MariaDB 13.0** : mise à jour via WUD le 9 octobre, `mariadb-upgrade` passé le 12 octobre après une sauvegarde fraîche.
 
-- [x] **Oracle mis en pause** : hors du démarrage automatique (profil `on-demand`), en attendant la décision.
+- [x] **Oracle recréé à vide** (13 octobre) : l'ancienne base corrompue (`ORA-01578`) est abandonnée, sa copie reste dans le volume `docker-master_oracle_data_copie_20260929` (3,3 Go, à supprimer quand plus utile). Toujours à la demande (profil `on-demand`), utilisateur applicatif `RGZ` sur `XEPDB1`.
 
 - [x] **HTTPS pour la dev-stack** (`*.dev.localhost`) : autorité locale restreinte à ce domaine (`make certs`), installée dans Windows et WSL. Redirection automatique depuis HTTP ; les autres projets (`*.localhost`) restent en HTTP.
 
@@ -49,10 +49,6 @@ Contexte à garder en tête :
 ## À régler en priorité
 
 - [ ] **Postgres 16 → 18** de `hoppscotch-db` : bloqué dans WUD, à faire volontairement (dump puis restauration).
-- [ ] **Oracle** (`oracle`, volume `docker-master_oracle_data`, **en pause**) ne démarre plus : `ORA-01578`, bloc corrompu dans `system01.dbf`.
-  - Une copie du volume en l'état existe : `docker-master_oracle_data_copie_20260929`.
-  - Décision à prendre : tenter une réparation, ou recréer la base à vide.
-  - Ensuite, automatiser l'export Data Pump. `make backup-oracle` est manuel pour l'instant.
 - [ ] **Renforcer les mots de passe MariaDB et Oracle**, aujourd'hui `root` / `password`.
 - [ ] **Enregistrer le mot de passe du login unique** (tinyauth) dans un gestionnaire de mots de passe. `.env` n'en contient que le hash.
 - [ ] **Enregistrer `RESTIC_PASSWORD`** dans un gestionnaire de mots de passe. Sans lui, les sauvegardes sont irrécupérables.
