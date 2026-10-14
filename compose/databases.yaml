@@ -1,0 +1,121 @@
+# Bases de données (à la demande) et Adminer.
+# Assemblé par docker-compose.traefik.yaml (include) : chemins relatifs à la racine du dépôt.
+services:
+  adminer:
+    image: adminer:6.1.1
+    container_name: adminer
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`${SUBDOMAIN}-adminer.${DOMAIN}`)"
+      - "traefik.http.routers.adminer.entrypoints=websecure"
+      - "traefik.http.routers.adminer.tls=true"
+      - "traefik.http.routers.adminer.middlewares=tinyauth"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+
+      - "glance.name=Adminer"
+      - "glance.icon=si:adminer"
+      - "glance.url=https://${SUBDOMAIN}-adminer.${DOMAIN}"
+      - "glance.description=Database Client"
+      - "glance.id=adminer"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/databases.yaml"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - stack_network
+
+  # À la demande : ne sert qu'aux projets qui en ont besoin (organizr…). Hors du
+  # démarrage automatique (profil on-demand) : à lancer depuis la page Services.
+  mariadb:
+    image: mariadb:13.0
+    container_name: mariadb
+    restart: "no"
+    profiles: ["on-demand"]
+    stop_grace_period: 1m
+
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-db_master}
+      MARIADB_USER: ${MARIADB_USER:-admin}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-password}
+
+    volumes:
+      - ./mnt/mariadb/data:/var/lib/mysql
+      - ./mnt/mariadb/config:/etc/mysql/conf.d
+
+    # Script fourni par l'image (utilisateur dédié créé à l'initialisation de la base)
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      start_period: 1m
+
+    labels:
+      - "dashboard.category=stack"
+      - "dashboard.on-demand=true"
+
+      - "glance.name=MariaDB"
+      - "glance.icon=si:mariadb"
+      - "glance.description=SQL Database"
+      - "glance.id=mariadb"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/databases.yaml"
+      - "wud.tag.include=^\\d+\\.\\d+$$"
+
+    # Nom unique sur le réseau partagé : « mariadb » désigne aussi le service
+    # d'autres projets (planning-dcs…) et pourrait viser la mauvaise base
+    networks:
+      stack_network:
+        aliases:
+          - docker-master-mariadb
+
+  # À la demande (profil on-demand). Base recréée à vide le 13 octobre ; l'ancienne,
+  # corrompue (ORA-01578), est gardée dans docker-master_oracle_data_copie_20260929.
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: oracle
+    restart: "no"
+    profiles: ["on-demand"]
+    # Oracle a besoin de plus que les 10 s par défaut pour s'arrêter proprement
+    stop_grace_period: 2m
+
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-password}
+      APP_USER: ${ORACLE_USER:-RGZ}
+      APP_USER_PASSWORD: ${ORACLE_USER_PASSWORD:-password}
+      NLS_LANG: FRENCH_FRANCE.AL32UTF8
+
+    ports:
+      - "1521:1521"
+
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+
+    labels:
+      - "dashboard.category=stack"
+      - "dashboard.on-demand=true"
+
+      - "glance.name=Oracle XE"
+      - "glance.icon=si:oracle"
+      - "glance.description=Oracle Database"
+      - "glance.id=oracle"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/databases.yaml"
+      - "wud.watch.digest=true"
+
+    networks:
+      - stack_network
+
+networks:
+  stack_network:
+    name: ${STACK_NETWORK:-bme_network}
+    external: true
+
+volumes:
+  oracle_data:

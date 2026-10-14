@@ -38,6 +38,10 @@ Contexte à garder en tête :
 
 - [x] **Images mises à jour** (8 octobre) : Traefik v3.7, Portainer 2.45.2, Hoppscotch 2026.9.0, nouvelles versions d'Adminer, Glance, Mailpit et WUD. MariaDB 13 et Postgres 18 volontairement écartés (versions majeures).
 
+- [x] **Compose découpé** (14 octobre) : services répartis par fonction dans `compose/` (proxy, databases, monitoring, backups, hoppscotch, tools, dashboard), assemblés par `docker-compose.traefik.yaml` avec `include:`. Configuration résolue identique à l'ancienne.
+
+- [x] **Mises à jour WUD sans reformatage** (14 octobre) : mode rollback (remplacement du seul tag dans le fichier du service, indiqué par le label `wud.compose.file`), retour arrière automatique si le conteneur n'est pas sain dans les 5 minutes.
+
 - [x] **Healthchecks sur Traefik et MariaDB** (14 octobre) : Traefik via `/ping`, MariaDB via le script de l'image ; restic et Organizr attendent une MariaDB saine. Portainer n'en a pas : son image ne contient aucun outil pour l'interroger.
 
 - [x] **Versions figées** (14 octobre) : les images en `latest` pointent sur la version exacte qui tournait (même image), WUD suit leurs tags. Seul Organizr reste en `latest` (aucune version publiée), suivi par digest.
@@ -66,7 +70,6 @@ Contexte à garder en tête :
 ### Robustesse
 
 - [ ] **Copie des sauvegardes Restic hors de la VM** : `/mnt/c/...`, NAS ou S3. Aujourd'hui, le dépôt est sur le même disque que les données.
-- [ ] **Découper `docker-compose.traefik.yaml`** (plus de 600 lignes) en plusieurs fichiers assemblés avec `include:` : proxy, bases, monitoring, outils.
 - [ ] **Limites mémoire (`mem_limit`)** sur Oracle et les autres services gourmands.
 
 ### Dashboard Nuxt (`mnt/dashboard/`)
@@ -157,9 +160,10 @@ Poids : 🟢 léger · 🟡 moyen · 🔴 lourd (1 Go de RAM ou plus).
 
 Suivre les conventions du compose :
 
-- réseau `bme_network` ;
-- labels Traefik `Host(\`${SUBDOMAIN}-<nom>.${DOMAIN}\`)` ;
+- service dans le fichier `compose/<fonction>.yaml` adapté (ou un nouveau fichier ajouté à l'`include:` de `docker-compose.traefik.yaml`) ;
+- réseau `stack_network` (déclaré en bas du fichier) ;
+- labels Traefik `Host(\`${SUBDOMAIN}-<nom>.${DOMAIN}\`)`, entrypoint `websecure` et `tls=true` ;
 - label `dashboard.category=stack` (infrastructure) ou `dashboard.category=tools` (outil avec interface), pour son classement dans le dashboard ;
 - labels `glance.*` ;
-- labels `wud.watch=true`, plus `wud.tag.include` (tag de version) ou `wud.watch.digest=true` (tag `latest`) ;
+- labels `wud.watch=true`, `wud.compose.file=/project/compose/<fichier>.yaml`, plus `wud.tag.include` (tag de version ; `latest` seulement si aucune version n'est publiée, avec `wud.watch.digest=true`) ;
 - `make sync-hosts` pour ajouter le domaine au fichier hosts de Windows.

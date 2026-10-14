@@ -1,0 +1,309 @@
+# Outils de développement.
+# Assemblé par docker-compose.traefik.yaml (include) : chemins relatifs à la racine du dépôt.
+services:
+  # Portainer garde le socket direct : il a besoin de l'API en écriture
+  # (POST, exec, volumes...), un proxy n'apporterait aucune restriction.
+  portainer:
+    image: portainer/portainer-ce:2.45.2
+    container_name: portainer
+    restart: unless-stopped
+
+    environment:
+      # Autorités système + autorité locale, pour joindre tinyauth (OAuth) en HTTPS
+      - SSL_CERT_DIR=/etc/ssl/certs:/certs-ca
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./mnt/portainer/data:/data
+      - ./mnt/certs/ca/ca.crt:/certs-ca/docker-master-ca.crt:ro
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`${SUBDOMAIN}-portainer.${DOMAIN}`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+      - "glance.name=Portainer"
+      - "glance.icon=si:portainer"
+      - "glance.url=https://${SUBDOMAIN}-portainer.${DOMAIN}"
+      - "glance.description=Container Management"
+      - "glance.id=portainer"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - stack_network
+
+  mailer:
+    image: axllent/mailpit:v1.31.4
+    container_name: mailer
+    restart: unless-stopped
+
+    ports:
+      - "1025:1025"
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailer.rule=Host(`${SUBDOMAIN}-mailer.${DOMAIN}`)"
+      - "traefik.http.routers.mailer.entrypoints=websecure"
+      - "traefik.http.routers.mailer.tls=true"
+      - "traefik.http.routers.mailer.middlewares=tinyauth"
+      - "traefik.http.services.mailer.loadbalancer.server.port=8025"
+
+      - "glance.name=Mailpit"
+      - "glance.icon=si:mailtrap"
+      - "glance.url=https://${SUBDOMAIN}-mailer.${DOMAIN}"
+      - "glance.description=Mail Catcher"
+      - "glance.id=mailpit"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - stack_network
+
+  # À la demande : fait double emploi avec le dashboard Nuxt. Hors du démarrage
+  # automatique (profil on-demand) : à lancer depuis la page Services du dashboard.
+  glance:
+    image: glanceapp/glance:v0.8.6
+    container_name: glance
+    restart: "no"
+    profiles: ["on-demand"]
+
+    environment:
+      - DOCKER_API_VERSION=1.40
+
+    volumes:
+      - ./mnt/glance/config:/app/config
+
+    depends_on:
+      - docker-socket-proxy
+
+    labels:
+      - "dashboard.category=tools"
+      - "dashboard.on-demand=true"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.glance.rule=Host(`${SUBDOMAIN}-glance.${DOMAIN}`)"
+      - "traefik.http.routers.glance.entrypoints=websecure"
+      - "traefik.http.routers.glance.tls=true"
+      - "traefik.http.routers.glance.middlewares=tinyauth"
+      - "traefik.http.services.glance.loadbalancer.server.port=8080"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - stack_network
+      - socket_proxy
+
+  # À la demande : fait double emploi avec le dashboard Nuxt. Hors du démarrage
+  # automatique (profil on-demand) : à lancer depuis la page Services du dashboard.
+  organizr:
+    image: organizr/organizr
+    container_name: organizr
+    restart: "no"
+    profiles: ["on-demand"]
+
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+
+    volumes:
+      - ./mnt/organizr/config:/config
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+    labels:
+      - "dashboard.category=tools"
+      - "dashboard.on-demand=true"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.organizr.rule=Host(`${SUBDOMAIN}-organizr.${DOMAIN}`)"
+      - "traefik.http.routers.organizr.entrypoints=websecure"
+      - "traefik.http.routers.organizr.tls=true"
+      - "traefik.http.services.organizr.loadbalancer.server.port=80"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.watch.digest=true"
+
+    networks:
+      - stack_network
+
+  it-tools:
+    image: ghcr.io/corentinth/it-tools:2024.10.22-7ca5933
+    container_name: it-tools
+    restart: unless-stopped
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.it-tools.rule=Host(`${SUBDOMAIN}-it-tools.${DOMAIN}`)"
+      - "traefik.http.routers.it-tools.entrypoints=websecure"
+      - "traefik.http.routers.it-tools.tls=true"
+      - "traefik.http.routers.it-tools.middlewares=tinyauth"
+      - "traefik.http.services.it-tools.loadbalancer.server.port=80"
+
+      - "glance.name=IT Tools"
+      - "glance.icon=si:toolbox"
+      - "glance.url=https://${SUBDOMAIN}-it-tools.${DOMAIN}"
+      - "glance.description=Dev Utilities"
+      - "glance.id=it-tools"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.tag.include=^\\d{4}\\.\\d+\\.\\d+-[0-9a-f]+$$"
+
+    networks:
+      - stack_network
+
+  # Cache des images Docker Hub (pull-through) : chaque image n'est téléchargée
+  # qu'une fois puis servie en local. La source est mirror.gcr.io, le miroir de
+  # Docker Hub de Google, sans la limite anonyme (429) que l'IP partagée de
+  # l'entreprise épuise vite. Le daemon Docker l'utilise via "registry-mirrors"
+  # (make registry-mirror) et repasse par Docker Hub en direct si une image est
+  # absente du miroir ou si le cache est arrêté.
+  registry-cache:
+    image: registry:3.1.2
+    container_name: registry-cache
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:5000:5000"
+
+    environment:
+      - REGISTRY_PROXY_REMOTEURL=https://mirror.gcr.io
+      - REGISTRY_PROXY_TTL=168h
+      - REGISTRY_LOG_LEVEL=info
+      - OTEL_TRACES_EXPORTER=none
+
+    volumes:
+      - ./mnt/registry/data:/var/lib/registry
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5000/v2/"]
+      interval: 30s
+      timeout: 5s
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.tag.include=^3\\.\\d+\\.\\d+$$"
+
+    networks:
+      - stack_network
+
+  # Simulation d'API externes. Les stubs sont des fichiers JSON versionnés dans
+  # mnt/wiremock/mappings (réponses volumineuses dans mnt/wiremock/__files),
+  # rechargés avec POST /__admin/mappings/reset. Les applis l'appellent en
+  # interne sur http://wiremock:8080. Via Traefik, les mocks sont ouverts mais
+  # l'API d'administration (/__admin) passe par le login unique.
+  wiremock:
+    image: wiremock/wiremock:3.13.2
+    container_name: wiremock
+    restart: unless-stopped
+
+    command:
+      - --global-response-templating
+      - --disable-banner
+
+    environment:
+      # Fichiers de stubs créés via l'API au nom de l'utilisateur de l'hôte
+      - uid=${UID:-1000}
+
+    volumes:
+      - ./mnt/wiremock/mappings:/home/wiremock/mappings
+      - ./mnt/wiremock/__files:/home/wiremock/__files
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.wiremock.rule=Host(`${SUBDOMAIN}-wiremock.${DOMAIN}`)"
+      - "traefik.http.routers.wiremock.entrypoints=websecure"
+      - "traefik.http.routers.wiremock.tls=true"
+      - "traefik.http.routers.wiremock.service=wiremock"
+      - "traefik.http.routers.wiremock-admin.rule=Host(`${SUBDOMAIN}-wiremock.${DOMAIN}`) && PathPrefix(`/__admin`)"
+      - "traefik.http.routers.wiremock-admin.entrypoints=websecure"
+      - "traefik.http.routers.wiremock-admin.tls=true"
+      - "traefik.http.routers.wiremock-admin.middlewares=tinyauth"
+      - "traefik.http.routers.wiremock-admin.service=wiremock"
+      - "traefik.http.services.wiremock.loadbalancer.server.port=8080"
+
+      - "glance.name=WireMock"
+      - "glance.icon=si:wiremock"
+      - "glance.url=https://${SUBDOMAIN}-wiremock.${DOMAIN}/__admin/swagger-ui/"
+      - "glance.description=API Mocks"
+      - "glance.id=wiremock"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - stack_network
+
+  # Gestion des projets Compose (éditer, démarrer, arrêter, mettre à jour).
+  # Il voit les projets de PROJECTS_DIR via les liens de mnt/dockge/stacks
+  # (make dockge-sync) : Dockge n'accepte que des noms en minuscules.
+  # PROJECTS_DIR est monté au même chemin que sur l'hôte, pour que les chemins
+  # relatifs des compose restent valides. Accès complet à Docker et écriture sur
+  # tous les projets : derrière le login unique en plus de son propre compte.
+  dockge:
+    image: louislam/dockge:1.5.0
+    container_name: dockge
+    restart: unless-stopped
+
+    environment:
+      - DOCKGE_STACKS_DIR=${PROJECTS_DIR}/docker-master/mnt/dockge/stacks
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./mnt/dockge/data:/app/data
+      - ${PROJECTS_DIR}:${PROJECTS_DIR}
+
+    labels:
+      - "dashboard.category=tools"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.dockge.rule=Host(`${SUBDOMAIN}-dockge.${DOMAIN}`)"
+      - "traefik.http.routers.dockge.entrypoints=websecure"
+      - "traefik.http.routers.dockge.tls=true"
+      - "traefik.http.routers.dockge.middlewares=tinyauth"
+      - "traefik.http.services.dockge.loadbalancer.server.port=5001"
+
+      - "glance.name=Dockge"
+      - "glance.icon=si:docker"
+      - "glance.url=https://${SUBDOMAIN}-dockge.${DOMAIN}"
+      - "glance.description=Compose Stacks"
+      - "glance.id=dockge"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/tools.yaml"
+      - "wud.tag.include=^1\\.\\d+\\.\\d+$$"
+
+    networks:
+      - stack_network
+
+networks:
+  stack_network:
+    name: ${STACK_NETWORK:-bme_network}
+    external: true
+  socket_proxy:
+    internal: true

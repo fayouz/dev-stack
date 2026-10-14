@@ -1,0 +1,58 @@
+# Dashboard Nuxt de la stack.
+# Assemblé par docker-compose.traefik.yaml (include) : chemins relatifs à la racine du dépôt.
+services:
+  # Dashboard Nuxt de la stack : état des services (lecture seule), actions
+  # start/stop/restart via le proxy dédié, métriques, mises à jour WUD, sauvegardes.
+  # Protégé par le login unique (tinyauth).
+  dashboard:
+    build: ./mnt/dashboard
+    image: docker-master/dashboard:local
+    container_name: dashboard
+    restart: unless-stopped
+
+    environment:
+      - TZ=Europe/Paris
+      - NUXT_WUD_PASSWORD=${WUD_ADMIN_PASSWORD:-admin}
+      - NUXT_PUBLIC_WUD_PUBLIC_URL=https://${SUBDOMAIN}-wud.${DOMAIN}
+
+    # États écrits par restic et trivy ; demandes déposées pour eux (sauvegarde,
+    # analyse), le dashboard n'ayant pas le droit d'exécuter de commande ailleurs
+    volumes:
+      - ./mnt/restic/status:/status/restic:ro
+      - ./mnt/restic/requests:/requests/restic
+      - ./mnt/trivy/status:/status/trivy:ro
+      - ./mnt/trivy/requests:/requests/trivy
+
+    depends_on:
+      - docker-socket-proxy
+      - docker-socket-proxy-actions
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`${SUBDOMAIN}-dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.middlewares=tinyauth"
+      - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
+
+      - "glance.name=Dashboard"
+      - "glance.icon=si:nuxt"
+      - "glance.url=https://${SUBDOMAIN}-dashboard.${DOMAIN}"
+      - "glance.description=Stack Dashboard"
+      - "glance.id=dashboard"
+
+    networks:
+      - stack_network
+      - socket_proxy
+      - socket_proxy_actions
+
+networks:
+  stack_network:
+    name: ${STACK_NETWORK:-bme_network}
+    external: true
+  socket_proxy:
+    internal: true
+  socket_proxy_actions:
+    internal: true

@@ -1,0 +1,53 @@
+# Sauvegardes chiffrées (restic).
+# Assemblé par docker-compose.traefik.yaml (include) : chemins relatifs à la racine du dépôt.
+services:
+  # Sauvegardes chiffrées. MariaDB est sauvegardée par dump (cohérent),
+  # Oracle via `make backup-oracle` (export Data Pump déposé dans mnt/restic/dumps).
+  restic:
+    build: ./mnt/restic
+    image: docker-master/restic:local
+    container_name: restic
+    # Nom d'hôte fixe : restic regroupe les snapshots par hôte pour la rétention
+    hostname: docker-master
+    restart: unless-stopped
+
+    environment:
+      - TZ=Europe/Paris
+      - RESTIC_REPOSITORY=/repo
+      - RESTIC_PASSWORD=${RESTIC_PASSWORD}
+      - RESTIC_CRON=${RESTIC_CRON:-30 12 * * *}
+      - RESTIC_CHECK_CRON=${RESTIC_CHECK_CRON:-0 13 * * 1}
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-root}
+      - MARIADB_HOST=docker-master-mariadb
+      - BACKUP_MAIL_FROM=restic@docker-master.local
+      - BACKUP_MAIL_TO=dev@docker-master.local
+      - HEALTHCHECKS_PING_KEY=${HEALTHCHECKS_PING_KEY:-}
+
+    volumes:
+      - ./mnt/portainer/data:/source/portainer:ro
+      - ./mnt/restic/dumps:/source/oracle-dumps:ro
+      - ./mnt/restic/status:/status
+      - ./mnt/restic/requests:/requests
+      - ${RESTIC_REPOSITORY_PATH:-./mnt/restic/repo}:/repo
+
+    # MariaDB est à la demande : la sauvegarde ne l'attend que si elle est lancée
+    depends_on:
+      mariadb:
+        condition: service_healthy
+        required: false
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "glance.name=Restic"
+      - "glance.icon=si:restic"
+      - "glance.description=Backups"
+      - "glance.id=restic"
+
+    networks:
+      - stack_network
+
+networks:
+  stack_network:
+    name: ${STACK_NETWORK:-bme_network}
+    external: true

@@ -1,0 +1,206 @@
+# Accès : proxys du socket Docker, Traefik et login unique (tinyauth).
+# Assemblé par docker-compose.traefik.yaml (include) : chemins relatifs à la racine du dépôt.
+services:
+  # Seul conteneur (avec Portainer) à monter le socket Docker.
+  # Expose l'API en lecture seule (POST=0) sur le réseau interne socket_proxy.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+
+    environment:
+      - CONTAINERS=1
+      - NETWORKS=1
+      - IMAGES=1
+      - INFO=1
+      - EVENTS=1
+      - VERSION=1
+      - PING=1
+      - POST=0
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/proxy.yaml"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - socket_proxy
+
+  # N'autorise que start/stop/restart d'un conteneur existant (ni liste,
+  # ni création, ni exec, ni pull). Utilisé par le dashboard uniquement.
+  docker-socket-proxy-actions:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: docker-socket-proxy-actions
+    restart: unless-stopped
+
+    environment:
+      - POST=1
+      - CONTAINERS=0
+      - ALLOW_START=1
+      - ALLOW_STOP=1
+      - ALLOW_RESTARTS=1
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/proxy.yaml"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
+
+    networks:
+      - socket_proxy_actions
+
+  traefik:
+    image: traefik:v3.7
+    container_name: traefik
+    restart: unless-stopped
+
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
+      - "--providers.docker.network=${STACK_NETWORK:-bme_network}"
+
+      - "--api.dashboard=true"
+
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.asDefault=true"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.metrics.address=:8082"
+
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=metrics"
+      # /ping sur l'entrypoint interne des métriques, pour le healthcheck
+      - "--ping=true"
+      - "--ping.entrypoint=metrics"
+
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    environment:
+      - DOCKER_API_VERSION=1.40
+
+    volumes:
+      - ./letsencrypt:/letsencrypt
+      - ./mnt/traefik/dynamic:/etc/traefik/dynamic:ro
+      # Seulement le certificat serveur : la clé de l'autorité reste dans mnt/certs/ca
+      - ./mnt/certs/server:/certs:ro
+
+    depends_on:
+      - docker-socket-proxy
+
+    # La commande de healthcheck relit sa propre configuration : on lui redonne l'entrypoint
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--ping.entrypoint=metrics", "--entrypoints.metrics.address=:8082"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`local-traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=tinyauth"
+      # Défini ici (et non sur tinyauth) pour exister même quand tinyauth redémarre :
+      # l'accès reste alors fermé au lieu de casser les routeurs
+      - "traefik.http.middlewares.tinyauth.forwardauth.address=http://tinyauth:3000/api/auth/traefik"
+      - "traefik.http.middlewares.tinyauth.forwardauth.authResponseHeaders=Remote-User,Remote-Email,Remote-Name,Remote-Groups"
+      # HTTPS pour la dev-stack uniquement (*.${DOMAIN}) : les autres projets
+      # (*.localhost) gardent leur HTTP. Redirection temporaire (302) : rien n'est
+      # mémorisé par le navigateur, on peut revenir en arrière sans effet de bord.
+      - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.dev-stack-to-https.rule=HostRegexp(`^.+\\.${DOMAIN}$$`)"
+      - "traefik.http.routers.dev-stack-to-https.entrypoints=web"
+      - "traefik.http.routers.dev-stack-to-https.priority=1"
+      - "traefik.http.routers.dev-stack-to-https.middlewares=to-https"
+      - "traefik.http.routers.dev-stack-to-https.service=noop@internal"
+
+      - "glance.name=Traefik"
+      - "glance.icon=si:traefikproxy"
+      - "glance.url=https://local-traefik.${DOMAIN}"
+      - "glance.description=Reverse Proxy"
+      - "glance.id=traefik"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/proxy.yaml"
+      - "wud.tag.include=^v3\\.\\d+$$"
+
+    networks:
+      stack_network:
+        # Les conteneurs (Portainer, WUD) joignent l'émetteur OIDC par son nom public
+        aliases:
+          - ${SUBDOMAIN}-auth.${DOMAIN}
+      socket_proxy: {}
+
+  # Login unique pour les outils web (forward-auth Traefik) : ajouter le
+  # middleware `tinyauth` à un router pour le protéger. Session partagée
+  # entre les sous-domaines de ${DOMAIN}, qui doit avoir deux niveaux
+  # (ex. dev.localhost) : les navigateurs refusent un cookie sur "localhost".
+  tinyauth:
+    image: ghcr.io/tinyauthapp/tinyauth:v5
+    container_name: tinyauth
+    restart: unless-stopped
+
+    environment:
+      - TINYAUTH_APPURL=https://${SUBDOMAIN}-auth.${DOMAIN}
+      - TINYAUTH_AUTH_USERS=${TINYAUTH_USERS}
+      - TINYAUTH_DATABASE_PATH=/data/tinyauth.db
+      - TINYAUTH_UI_TITLE=Docker Master
+      - TINYAUTH_UI_WARNINGSENABLED=false
+      - TINYAUTH_AUTH_TRUSTEDPROXIES=172.25.0.0/24
+      - TINYAUTH_AUTH_SECURECOOKIE=true
+      # Fournisseur OIDC : connexion automatique de Portainer et WUD (HTTPS requis)
+      - TINYAUTH_OIDC_PRIVATEKEYPATH=/data/oidc_key
+      - TINYAUTH_OIDC_PUBLICKEYPATH=/data/oidc_key.pub
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_CLIENTID=portainer
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_CLIENTSECRET=${TINYAUTH_OIDC_PORTAINER_SECRET}
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_TRUSTEDREDIRECTURIS=https://${SUBDOMAIN}-portainer.${DOMAIN}
+      - TINYAUTH_OIDC_CLIENTS_PORTAINER_NAME=Portainer
+      - TINYAUTH_OIDC_CLIENTS_WUD_CLIENTID=wud
+      - TINYAUTH_OIDC_CLIENTS_WUD_CLIENTSECRET=${TINYAUTH_OIDC_WUD_SECRET}
+      - TINYAUTH_OIDC_CLIENTS_WUD_TRUSTEDREDIRECTURIS=https://${SUBDOMAIN}-wud.${DOMAIN}/auth/oidc/tinyauth/cb
+      - TINYAUTH_OIDC_CLIENTS_WUD_NAME=WUD
+
+    volumes:
+      - ./mnt/tinyauth/data:/data
+
+    labels:
+      - "dashboard.category=stack"
+
+      - "traefik.enable=true"
+      - "traefik.http.routers.tinyauth.rule=Host(`${SUBDOMAIN}-auth.${DOMAIN}`)"
+      - "traefik.http.routers.tinyauth.entrypoints=websecure"
+      - "traefik.http.routers.tinyauth.tls=true"
+      - "traefik.http.services.tinyauth.loadbalancer.server.port=3000"
+
+      - "wud.watch=true"
+      - "wud.compose.file=/project/compose/proxy.yaml"
+      - "wud.tag.include=^v\\d+$$"
+
+    networks:
+      - stack_network
+
+networks:
+  stack_network:
+    name: ${STACK_NETWORK:-bme_network}
+    external: true
+  socket_proxy:
+    internal: true
+  socket_proxy_actions:
+    internal: true
