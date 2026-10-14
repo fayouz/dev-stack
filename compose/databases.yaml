@@ -2,7 +2,7 @@
 # Assemblé par docker-compose.traefik.yaml (include) : chemins relatifs à la racine du dépôt.
 services:
   adminer:
-    image: adminer:6.1.1
+    image: adminer:6.1.2
     container_name: adminer
 
     labels:
