@@ -46,7 +46,7 @@ Contexte à garder en tête :
 
 - [x] **Versions figées** (14 octobre) : les images en `latest` pointent sur la version exacte qui tournait (même image), WUD suit leurs tags. Seul Organizr reste en `latest` (aucune version publiée), suivi par digest.
 
-- [x] **MariaDB à la demande** (14 octobre) : `make mariadb` / `make mariadb-stop` ou la page Services. La sauvegarde ignore le dump quand elle est arrêtée. Elle est jointe sous le nom unique `docker-master-mariadb` : `mariadb` désignait aussi la base de planning-dcs, que la sauvegarde a pu viser (snapshot `24ec8da5` du 14 octobre, et possiblement d'autres quand les deux tournaient).
+- [x] **MariaDB à la demande** (14 octobre) : `make mariadb` / `make mariadb-stop` ou la page Services. La sauvegarde ignore le dump quand elle est arrêtée. Elle est jointe sous le nom unique `docker-master-mariadb` : `mariadb` désignait aussi la base de planning-dcs, que la sauvegarde a visée au moins deux fois (snapshot `24ec8da5` du 14 octobre, retiré depuis par la rétention, et `595dd244` du 12 octobre, encore présent : MariaDB 11.4 de planning-dcs). Les autres dumps sont bien les nôtres (12.2 puis 13.0).
 
 - [x] **MariaDB 13.0** : mise à jour via WUD le 9 octobre, `mariadb-upgrade` passé le 12 octobre après une sauvegarde fraîche.
 
@@ -58,6 +58,7 @@ Contexte à garder en tête :
 
 ## À régler en priorité
 
+- [ ] **Supprimer le snapshot restic `595dd244`** : dump de la base de planning-dcs enregistré par erreur sous le tag `mariadb` (`docker exec restic restic forget --prune 595dd244`).
 - [ ] **Postgres 16 → 18** de `hoppscotch-db` : bloqué dans WUD, à faire volontairement (dump puis restauration).
 - [ ] **Renforcer les mots de passe MariaDB et Oracle**, aujourd'hui `root` / `password`.
 - [ ] **Enregistrer le mot de passe du login unique** (tinyauth) dans un gestionnaire de mots de passe. `.env` n'en contient que le hash.
