@@ -35,7 +35,7 @@ BLUE = \033[0;34m
 NC = \033[0m # No Color
 
 .PHONY: help start start-bme _up stop up down network-bme restart logs status ps build pull clean prune network migrate-network test-oracle sync-hosts sync-hosts-ps hosts \
-	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-hoppscotch-sync dozzle dozzle-stop logs-prometheus logs-grafana logs-restic update-one \
+	logs-socket-proxy logs-wud logs-dashboard logs-registry logs-hoppscotch-sync dozzle dozzle-stop mariadb mariadb-stop logs-prometheus logs-grafana logs-restic update-one \
 	backup-now backup-snapshots backup-check backup-oracle backup-restore-test registry-mirror healthchecks-init dockge-sync certs
 
 # Commande par défaut
@@ -159,6 +159,12 @@ dozzle: ## Démarre Dozzle (à la demande : coûteux en CPU tant qu'il tourne)
 
 dozzle-stop: ## Arrête Dozzle
 	$(COMPOSE) --profile on-demand stop dozzle
+
+mariadb: ## Démarre MariaDB (à la demande)
+	$(COMPOSE) --profile on-demand up -d mariadb
+
+mariadb-stop: ## Arrête MariaDB
+	$(COMPOSE) --profile on-demand stop mariadb
 
 logs-prometheus: ## Affiche les logs de Prometheus uniquement
 	$(COMPOSE) logs -f prometheus
@@ -385,7 +391,7 @@ backup-snapshots: ## Liste les snapshots de sauvegarde
 backup-check: ## Vérifie l'intégrité du dépôt de sauvegarde
 	$(RESTIC) restic check
 
-backup-restore-test: ## Restaure le dernier dump MariaDB dans une base jetable et le vérifie (db=<base>)
+backup-restore-test: ## Restaure le dernier dump MariaDB dans une base jetable et le vérifie (db=<base>, MariaDB doit tourner : make mariadb)
 	$(RESTIC) /scripts/restore-test.sh $(db)
 
 backup-oracle: ## Exporte Oracle (Data Pump) puis lance une sauvegarde

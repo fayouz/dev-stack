@@ -38,6 +38,12 @@ Contexte à garder en tête :
 
 - [x] **Images mises à jour** (8 octobre) : Traefik v3.7, Portainer 2.45.2, Hoppscotch 2026.9.0, nouvelles versions d'Adminer, Glance, Mailpit et WUD. MariaDB 13 et Postgres 18 volontairement écartés (versions majeures).
 
+- [x] **Healthchecks sur Traefik et MariaDB** (14 octobre) : Traefik via `/ping`, MariaDB via le script de l'image ; restic et Organizr attendent une MariaDB saine. Portainer n'en a pas : son image ne contient aucun outil pour l'interroger.
+
+- [x] **Versions figées** (14 octobre) : les images en `latest` pointent sur la version exacte qui tournait (même image), WUD suit leurs tags. Seul Organizr reste en `latest` (aucune version publiée), suivi par digest.
+
+- [x] **MariaDB à la demande** (14 octobre) : `make mariadb` / `make mariadb-stop` ou la page Services. La sauvegarde ignore le dump quand elle est arrêtée. Elle est jointe sous le nom unique `docker-master-mariadb` : `mariadb` désignait aussi la base de planning-dcs, que la sauvegarde a pu viser (snapshot `24ec8da5` du 14 octobre, et possiblement d'autres quand les deux tournaient).
+
 - [x] **MariaDB 13.0** : mise à jour via WUD le 9 octobre, `mariadb-upgrade` passé le 12 octobre après une sauvegarde fraîche.
 
 - [x] **Oracle recréé à vide** (13 octobre) : l'ancienne base corrompue (`ORA-01578`) est abandonnée, sa copie reste dans le volume `docker-master_oracle_data_copie_20260929` (3,3 Go, à supprimer quand plus utile). Toujours à la demande (profil `on-demand`), utilisateur applicatif `RGZ` sur `XEPDB1`.
@@ -59,9 +65,7 @@ Contexte à garder en tête :
 
 ### Robustesse
 
-- [ ] **Healthchecks sur Traefik, MariaDB et Portainer.** Ils s'afficheraient « sain » au lieu de « actif », et `depends_on: condition: service_healthy` deviendrait possible. L'image MariaDB fournit `healthcheck.sh`.
 - [ ] **Copie des sauvegardes Restic hors de la VM** : `/mnt/c/...`, NAS ou S3. Aujourd'hui, le dépôt est sur le même disque que les données.
-- [ ] **Fixer les images encore en `latest`** (Grafana, Prometheus, Dozzle, WUD, Adminer, Mailpit…). WUD verrait de vraies versions et réécrirait le compose, ce qui rend l'environnement reproductible.
 - [ ] **Découper `docker-compose.traefik.yaml`** (plus de 600 lignes) en plusieurs fichiers assemblés avec `include:` : proxy, bases, monitoring, outils.
 - [ ] **Limites mémoire (`mem_limit`)** sur Oracle et les autres services gourmands.
 

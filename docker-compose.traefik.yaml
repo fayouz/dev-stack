@@ -3,7 +3,7 @@ services:
   # Seul conteneur (avec Portainer) à monter le socket Docker.
   # Expose l'API en lecture seule (POST=0) sur le réseau interne socket_proxy.
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:v0.5.0
     container_name: docker-socket-proxy
     restart: unless-stopped
 
@@ -24,7 +24,7 @@ services:
       - "dashboard.category=stack"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - socket_proxy
@@ -32,7 +32,7 @@ services:
   # N'autorise que start/stop/restart d'un conteneur existant (ni liste,
   # ni création, ni exec, ni pull). Utilisé par le dashboard uniquement.
   docker-socket-proxy-actions:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:v0.5.0
     container_name: docker-socket-proxy-actions
     restart: unless-stopped
 
@@ -50,7 +50,7 @@ services:
       - "dashboard.category=stack"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - socket_proxy_actions
@@ -75,6 +75,9 @@ services:
 
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.entrypoint=metrics"
+      # /ping sur l'entrypoint interne des métriques, pour le healthcheck
+      - "--ping=true"
+      - "--ping.entrypoint=metrics"
 
       - "--providers.file.directory=/etc/traefik/dynamic"
       - "--providers.file.watch=true"
@@ -94,6 +97,13 @@ services:
 
     depends_on:
       - docker-socket-proxy
+
+    # La commande de healthcheck relit sa propre configuration : on lui redonne l'entrypoint
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--ping.entrypoint=metrics", "--entrypoints.metrics.address=:8082"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
 
     labels:
       - "dashboard.category=stack"
@@ -172,7 +182,7 @@ services:
       - stack_network
 
   adminer:
-    image: adminer:latest
+    image: adminer:6.1.1
     container_name: adminer
 
     labels:
@@ -192,15 +202,18 @@ services:
       - "glance.id=adminer"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
 
+  # À la demande : ne sert qu'aux projets qui en ont besoin (organizr…). Hors du
+  # démarrage automatique (profil on-demand) : à lancer depuis la page Services.
   mariadb:
     image: mariadb:13.0
     container_name: mariadb
-    restart: unless-stopped
+    restart: "no"
+    profiles: ["on-demand"]
     stop_grace_period: 1m
 
     environment:
@@ -213,8 +226,16 @@ services:
       - ./mnt/mariadb/data:/var/lib/mysql
       - ./mnt/mariadb/config:/etc/mysql/conf.d
 
+    # Script fourni par l'image (utilisateur dédié créé à l'initialisation de la base)
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      start_period: 1m
+
     labels:
       - "dashboard.category=stack"
+      - "dashboard.on-demand=true"
 
       - "glance.name=MariaDB"
       - "glance.icon=si:mariadb"
@@ -224,12 +245,15 @@ services:
       - "wud.watch=true"
       - "wud.tag.include=^\\d+\\.\\d+$$"
 
+    # Nom unique sur le réseau partagé : « mariadb » désigne aussi le service
+    # d'autres projets (planning-dcs…) et pourrait viser la mauvaise base
     networks:
-      - stack_network
+      stack_network:
+        aliases:
+          - docker-master-mariadb
 
-  # EN PAUSE : base corrompue (ORA-01578 dans system01.dbf), copie du volume dans
-  # docker-master_oracle_data_copie_20260929. Hors du démarrage automatique
-  # (profil on-demand) en attendant la décision : réparer ou recréer à vide.
+  # À la demande (profil on-demand). Base recréée à vide le 13 octobre ; l'ancienne,
+  # corrompue (ORA-01578), est gardée dans docker-master_oracle_data_copie_20260929.
   oracle:
     image: gvenzl/oracle-xe:21-slim
     container_name: oracle
@@ -266,7 +290,7 @@ services:
       - stack_network
 
   mailer:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.31.4
     container_name: mailer
     restart: unless-stopped
 
@@ -290,7 +314,7 @@ services:
       - "glance.id=mailpit"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
@@ -298,7 +322,7 @@ services:
   # À la demande : fait double emploi avec le dashboard Nuxt. Hors du démarrage
   # automatique (profil on-demand) : à lancer depuis la page Services du dashboard.
   glance:
-    image: glanceapp/glance
+    image: glanceapp/glance:v0.8.6
     container_name: glance
     restart: "no"
     profiles: ["on-demand"]
@@ -324,7 +348,7 @@ services:
       - "traefik.http.services.glance.loadbalancer.server.port=8080"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
@@ -347,7 +371,8 @@ services:
       - ./mnt/organizr/config:/config
 
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
 
     labels:
       - "dashboard.category=tools"
@@ -370,7 +395,7 @@ services:
   # option pour le couper. Hors du démarrage automatique (profil on-demand) :
   # à lancer depuis la page Services du dashboard, ou `make dozzle`.
   dozzle:
-    image: amir20/dozzle:latest
+    image: amir20/dozzle:v10.3.0
     container_name: dozzle
     restart: "no"
     profiles: ["on-demand"]
@@ -400,7 +425,7 @@ services:
       - "glance.id=dozzle"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
@@ -412,7 +437,7 @@ services:
   # Socket direct : pull + recréation = accès complet à l'API, un proxy
   # n'apporterait aucune restriction (même exception que Portainer).
   wud:
-    image: getwud/wud:latest
+    image: getwud/wud:9.3.0
     container_name: wud
     restart: unless-stopped
 
@@ -470,7 +495,7 @@ services:
       - "glance.id=wud"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
@@ -519,7 +544,7 @@ services:
       - stack_network
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.12.1
     container_name: node-exporter
     restart: unless-stopped
     pid: host
@@ -535,13 +560,13 @@ services:
       - "dashboard.category=stack"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0
     container_name: prometheus
     restart: unless-stopped
     mem_limit: 512m
@@ -573,13 +598,13 @@ services:
       - "glance.id=prometheus"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^v\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.3
     container_name: grafana
     restart: unless-stopped
 
@@ -620,7 +645,7 @@ services:
       - "glance.id=grafana"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^\\d+\\.\\d+\\.\\d+$$"
 
     networks:
       - stack_network
@@ -642,6 +667,7 @@ services:
       - RESTIC_CRON=${RESTIC_CRON:-30 12 * * *}
       - RESTIC_CHECK_CRON=${RESTIC_CHECK_CRON:-0 13 * * 1}
       - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-root}
+      - MARIADB_HOST=docker-master-mariadb
       - BACKUP_MAIL_FROM=restic@docker-master.local
       - BACKUP_MAIL_TO=dev@docker-master.local
       - HEALTHCHECKS_PING_KEY=${HEALTHCHECKS_PING_KEY:-}
@@ -653,8 +679,11 @@ services:
       - ./mnt/restic/requests:/requests
       - ${RESTIC_REPOSITORY_PATH:-./mnt/restic/repo}:/repo
 
+    # MariaDB est à la demande : la sauvegarde ne l'attend que si elle est lancée
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
+        required: false
 
     labels:
       - "dashboard.category=stack"
@@ -748,7 +777,7 @@ services:
       - stack_network
 
   it-tools:
-    image: ghcr.io/corentinth/it-tools:latest
+    image: ghcr.io/corentinth/it-tools:2024.10.22-7ca5933
     container_name: it-tools
     restart: unless-stopped
 
@@ -769,7 +798,7 @@ services:
       - "glance.id=it-tools"
 
       - "wud.watch=true"
-      - "wud.watch.digest=true"
+      - "wud.tag.include=^\\d{4}\\.\\d+\\.\\d+-[0-9a-f]+$$"
 
     networks:
       - stack_network

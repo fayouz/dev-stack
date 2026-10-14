@@ -5,7 +5,7 @@ set -euo pipefail
 
 SRC=${1:-${MARIADB_DATABASE:-db_master}}
 DB=restore_test
-MYSQL=(mariadb -h mariadb -uroot -p"${MARIADB_ROOT_PASSWORD}" --skip-ssl)
+MYSQL=(mariadb -h "${MARIADB_HOST}" -uroot -p"${MARIADB_ROOT_PASSWORD}" --skip-ssl)
 count_tables() {
     "${MYSQL[@]}" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$1'"
 }

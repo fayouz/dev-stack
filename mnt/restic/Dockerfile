@@ -1,4 +1,4 @@
-FROM restic/restic:latest
+FROM restic/restic:0.19.1
 
 RUN apk add --no-cache bash curl jq mariadb-client tzdata
 

@@ -23,9 +23,15 @@ echo "=== Sauvegarde du $(date '+%F %T') ==="
 /scripts/hc_ping.sh restic-backup start
 
 echo "--- MariaDB (dump)"
-mariadb-dump -h mariadb -uroot -p"${MARIADB_ROOT_PASSWORD}" --skip-ssl \
-    --all-databases --single-transaction --routines --events --triggers \
-    | restic backup --stdin --stdin-filename mariadb-all.sql --tag mariadb
+# MariaDB est à la demande : arrêtée, il n'y a rien de nouveau à sauvegarder et le
+# dernier dump reste dans le dépôt
+if mariadb-admin -h "${MARIADB_HOST}" -uroot -p"${MARIADB_ROOT_PASSWORD}" --skip-ssl --connect-timeout=5 ping >/dev/null 2>&1; then
+    mariadb-dump -h "${MARIADB_HOST}" -uroot -p"${MARIADB_ROOT_PASSWORD}" --skip-ssl \
+        --all-databases --single-transaction --routines --events --triggers \
+        | restic backup --stdin --stdin-filename mariadb-all.sql --tag mariadb
+else
+    echo "MariaDB arrêtée : dump ignoré, le précédent reste disponible"
+fi
 
 echo "--- Fichiers (Portainer, exports Oracle)"
 restic backup /source/portainer /source/oracle-dumps --tag files
